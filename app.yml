@@ -27,6 +27,9 @@ default_events:
   - status
   - push
   - repository
+  - installation
+  - installation_repositories
+  - marketplace_purchase
 
 webhook:
   active: true
@@ -39,5 +42,8 @@ webhook:
     - status
     - push
     - repository
+    - installation
+    - installation_repositories
+    - marketplace_purchase
 
 public: true

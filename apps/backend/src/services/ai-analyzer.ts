@@ -140,6 +140,14 @@ function generateFallbackAnalysis(input: PRAnalysisInput): PRAnalysisResult {
   const concerns: string[] = [];
   const recommendations: string[] = [];
 
+  // Check for documentation-only changes
+  const isDocumentationOnly = input.files.every(f => 
+    f.filename.endsWith('.md') ||
+    f.filename.includes('README') ||
+    f.filename.includes('docs/') ||
+    f.filename.includes('documentation')
+  );
+
   // File-based risk assessment
   const criticalFiles = input.files.filter(f => 
     f.filename.includes('auth') ||
@@ -152,14 +160,14 @@ function generateFallbackAnalysis(input: PRAnalysisInput): PRAnalysisResult {
   );
 
   if (criticalFiles.length > 0) {
-    riskScore += 0.3;
+    riskScore += 0.6; // Higher risk for critical files
     concerns.push(`Changes to critical files: ${criticalFiles.map(f => f.filename).join(', ')}`);
   }
 
   // Size-based risk
   const totalChanges = input.files.reduce((sum, f) => sum + f.additions + f.deletions, 0);
   if (totalChanges > 500) {
-    riskScore += 0.2;
+    riskScore += 0.3;
     concerns.push(`Large changeset: ${totalChanges} lines modified`);
   }
 
@@ -170,7 +178,7 @@ function generateFallbackAnalysis(input: PRAnalysisInput): PRAnalysisResult {
     f.filename.includes('__tests__')
   );
 
-  if (!hasTests && input.files.length > 2) {
+  if (!hasTests && input.files.length > 2 && !isDocumentationOnly) {
     riskScore += 0.2;
     concerns.push('No test files included in changeset');
     recommendations.push('Add tests for the new functionality');
@@ -182,18 +190,28 @@ function generateFallbackAnalysis(input: PRAnalysisInput): PRAnalysisResult {
     concerns.push('Urgent/hotfix branch detected');
   }
 
+  // Documentation changes are low risk
+  if (isDocumentationOnly) {
+    riskScore = Math.min(riskScore, 0.1);
+  }
+
+  const finalRiskScore = Math.min(1, riskScore);
+  const isHighSecurity = criticalFiles.some(f => 
+    f.filename.includes('auth') || f.filename.includes('security')
+  );
+
   return {
-    riskScore: Math.min(1, riskScore),
+    riskScore: finalRiskScore,
     summary: `Automated analysis: ${input.files.length} files changed, ${totalChanges} total modifications`,
     concerns,
     recommendations,
-    autoApprovalRecommended: riskScore < 0.3 && hasTests,
+    autoApprovalRecommended: isDocumentationOnly || (finalRiskScore < 0.3 && hasTests),
     categories: {
-      security: criticalFiles.length > 0 ? 0.5 : 0.1,
+      security: isHighSecurity ? 0.8 : (criticalFiles.length > 0 ? 0.6 : 0.1),
       breaking: totalChanges > 1000 ? 0.6 : 0.2,
       complexity: Math.min(1, totalChanges / 1000),
       testing: hasTests ? 0.1 : 0.7,
-      documentation: input.files.some(f => f.filename.includes('README') || f.filename.includes('.md')) ? 0.1 : 0.3
+      documentation: isDocumentationOnly ? 0.8 : (input.files.some(f => f.filename.includes('README') || f.filename.includes('.md')) ? 0.3 : 0.1)
     }
   };
 }

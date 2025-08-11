@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { featureGating } from '../services/feature-gating';
 
 const createRuleSchema = z.object({
   name: z.string().min(1),
@@ -54,6 +55,34 @@ export async function rulesRoutes(fastify: FastifyInstance) {
     try {
       const { orgId } = request.params;
       const ruleData = createRuleSchema.parse(request.body);
+
+      // Check if organization can create advanced rules
+      const hasAdvancedRules = await featureGating.checkFeatureAccess(orgId, 'advancedRules');
+      
+      // Count existing rules
+      const existingRules = await request.prisma.mergeRule.count({
+        where: { organizationId: orgId }
+      });
+
+      // For free plan, only allow basic rules
+      if (!hasAdvancedRules) {
+        if (existingRules >= 3) {
+          return reply.status(403).send({
+            error: 'Free plan is limited to 3 rules. Upgrade to add more.',
+            upgrade: true
+          });
+        }
+
+        // Restrict advanced features for free plan
+        if (ruleData.conditions.maxRiskScore !== undefined ||
+            ruleData.conditions.requireTests ||
+            (ruleData.actions.autoMerge && ruleData.actions.autoApprove)) {
+          return reply.status(403).send({
+            error: 'Advanced rule features require a paid plan.',
+            upgrade: true
+          });
+        }
+      }
 
       const rule = await request.prisma.mergeRule.create({
         data: {
