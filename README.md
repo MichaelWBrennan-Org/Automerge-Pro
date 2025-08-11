@@ -43,19 +43,31 @@ Click the button above or visit our [GitHub Marketplace listing](https://github.
 
 ### 2. Configure Your Rules
 
+You have two options for configuration:
+
+**Option A: Dashboard Configuration (Recommended)**
 1. Visit the [AutoMerge Pro Dashboard](https://automerge-pro.com/dashboard)
-2. Select your organization and repositories
-3. Create your first automation rule:
+2. Select your organization and repositories  
+3. Create automation rules using our visual interface
+
+**Option B: Repository Configuration File**
+1. Add a `.automerge-pro.yml` file to your repository root
+2. Configure rules using YAML syntax (see [example config](.automerge-pro.yml.example))
+
    ```yaml
-   # Example: Auto-approve documentation updates
-   name: "Documentation Updates"
-   conditions:
-     filePatterns: ["*.md", "docs/**"]
-     maxRiskScore: 0.2
-   actions:
-     autoApprove: true
-     autoMerge: true
+   version: '1'
+   rules:
+     - name: "Auto-merge documentation"
+       conditions:
+         filePatterns: ["*.md", "docs/**"]
+         maxRiskScore: 0.2
+       actions:
+         autoApprove: true
+         autoMerge: true
+         mergeMethod: "squash"
    ```
+
+3. Rules in the config file take priority over dashboard rules
 
 ### 3. Watch the Magic Happen
 
@@ -65,14 +77,37 @@ AutoMerge Pro will now automatically:
 - 🔄 Auto-approve and merge safe changes
 - 📱 Notify you about risky PRs
 
-## 📋 Pricing
+## 📋 Pricing Plans
 
-| Plan | Price | Repositories | Features |
-|------|-------|--------------|----------|
-| **Free** | $0/month | 3 repos | Basic AI analysis, Standard rules |
-| **Team** | $99/month | 10 repos | Advanced AI, Slack notifications, Analytics |
-| **Growth** | $299/month | Unlimited | Premium AI models, Custom integrations |
-| **Enterprise** | $999/month | Unlimited | SSO, SLA, On-premise options |
+| Plan | Price | Repositories | AI Analysis | Advanced Rules | Notifications | Support |
+|------|-------|--------------|-------------|----------------|---------------|---------|
+| **Free** | $0/month | 1 repo | ❌ Basic only | ❌ 3 simple rules | ✅ Email | Community |
+| **Team** | $99/month | 10 repos | ✅ GPT-4 powered | ✅ Unlimited rules | ✅ Slack + Email | Priority |  
+| **Growth** | $299/month | Unlimited | ✅ Premium models | ✅ Compliance checks | ✅ All integrations | Premium |
+| **Enterprise** | $999/month | Unlimited | ✅ Custom models | ✅ Custom features | ✅ Dedicated channels | SLA + Training |
+
+### Feature Matrix
+
+| Feature | Free | Team | Growth | Enterprise |
+|---------|------|------|---------|------------|
+| **Core Automation** |
+| Basic merge rules | ✅ | ✅ | ✅ | ✅ |
+| File pattern matching | ✅ | ✅ | ✅ | ✅ |
+| Author-based rules | ✅ | ✅ | ✅ | ✅ |
+| Repository configuration | ❌ | ✅ | ✅ | ✅ |
+| **AI & Analysis** |
+| Risk scoring | Basic | ✅ GPT-4 | ✅ GPT-4 Turbo | ✅ Custom |
+| Security detection | ❌ | ✅ | ✅ | ✅ |
+| Breaking change analysis | ❌ | ✅ | ✅ | ✅ |
+| Compliance checks | ❌ | ❌ | ✅ | ✅ |
+| **Advanced Features** |
+| Scheduled merges | ❌ | ❌ | ✅ | ✅ |
+| Custom integrations | ❌ | ❌ | ✅ | ✅ |
+| Webhook notifications | ❌ | ❌ | ✅ | ✅ |
+| **Enterprise** |
+| SSO integration | ❌ | ❌ | ❌ | ✅ |
+| On-premise deployment | ❌ | ❌ | ❌ | ✅ |
+| Custom SLA | ❌ | ❌ | ❌ | ✅ |
 
 [View detailed pricing →](https://automerge-pro.com/pricing)
 
@@ -117,6 +152,26 @@ AutoMerge Pro is built with a modern, scalable architecture:
 - 📈 Comprehensive monitoring and logging
 
 ## 🛠️ Development Setup
+
+### GitHub App Configuration
+
+AutoMerge Pro is a GitHub App that requires specific permissions and webhooks:
+
+**Required Permissions:**
+- Pull requests: Read & Write
+- Contents: Read
+- Metadata: Read  
+- Repository webhooks: Write
+- Checks: Read
+- Actions: Read
+- Issues: Read (optional)
+
+**Webhook Events:**
+- `pull_request` - PR lifecycle events
+- `pull_request_review` - Review submissions  
+- `check_suite` / `check_run` - CI/CD status updates
+- `installation` / `installation_repositories` - App lifecycle
+- `marketplace_purchase` - Billing events
 
 ### Prerequisites
 
@@ -212,26 +267,41 @@ automerge-pro/
    - Metadata: Read
    - Repository webhooks: Write
 
-### Automation Rules
+### 🔧 Configuration Options
 
-Create sophisticated rules using our flexible JSON schema:
+AutoMerge Pro supports two configuration methods:
 
-```json
-{
-  "name": "Auto-approve trusted authors",
-  "conditions": {
-    "authorPatterns": ["dependabot[bot]", "@core-team/*"],
-    "filePatterns": ["package*.json", "*.lock"],
-    "maxRiskScore": 0.3
-  },
-  "actions": {
-    "autoApprove": true,
-    "autoMerge": false,
-    "requireReviews": 1,
-    "notify": true
-  }
-}
+#### Dashboard Configuration
+- Visual rule builder with drag-and-drop interface
+- Real-time rule validation and testing
+- Team collaboration and approval workflows
+- Advanced analytics and insights
+
+#### Repository Configuration (`.automerge-pro.yml`)
+```yaml
+version: '1'
+rules:
+  - name: "Documentation auto-merge"
+    conditions:
+      filePatterns: ["*.md", "docs/**"]
+      maxRiskScore: 0.2
+    actions:
+      autoApprove: true
+      autoMerge: true
+      mergeMethod: "squash"
+
+notifications:
+  slack:
+    webhookUrl: "https://hooks.slack.com/your/webhook"
+    events: ["auto_merged", "high_risk_pr"]
+
+settings:
+  aiAnalysis: true
+  riskThreshold: 0.5
+  autoDeleteBranches: true
 ```
+
+**Hierarchy**: Repository config file > Dashboard rules > Default settings
 
 ### AI Risk Scoring
 
@@ -255,17 +325,25 @@ AutoMerge Pro listens for these GitHub webhook events:
 ### REST API Endpoints
 
 ```bash
-# Get organization rules
-GET /api/rules/org/:orgId
+# Configuration Management
+GET /api/config/repo/:owner/:repo - Load repository configuration
+POST /api/config/validate - Validate configuration
+GET /api/config/example - Get example configuration
+GET /api/config/repo/:owner/:repo/rules - Get merged rules
 
-# Create new rule
-POST /api/rules/org/:orgId
+# Organization Management  
+GET /api/rules/org/:orgId - Get organization rules
+POST /api/rules/org/:orgId - Create new rule
 
-# Get pull request analysis
-GET /api/github/repositories/:repoId/pull-requests/:prNumber
+# Billing & Usage
+GET /api/billing/org/:orgId - Get billing information
+POST /api/billing/org/:orgId/upgrade - Initiate plan upgrade
 
-# Update notification settings
-POST /api/notifications/org/:orgId
+# Pull Request Analysis
+GET /api/github/repositories/:repoId/pull-requests/:prNumber - Get PR analysis
+
+# Notification Settings
+POST /api/notifications/org/:orgId - Update notification settings
 ```
 
 ## 🔒 Security
