@@ -3,16 +3,22 @@
  * Simple implementation of automerge rules and evaluation
  */
 
+const billing = require('./billing');
+const config = require('./config');
+
 /**
  * Evaluates whether a PR should be automatically merged
  * @param {Object} pullRequest - The pull request data from GitHub
  * @param {Object} repository - The repository data from GitHub  
  * @param {Object} octokit - GitHub API client
- * @returns {Promise<boolean>} - Whether to auto-merge
+ * @returns {Promise<Object>} - Evaluation result with shouldMerge and reason
  */
 async function evaluateAutomergeRules(pullRequest, repository, octokit) {
   try {
     console.log(`Evaluating automerge rules for PR #${pullRequest.number}`);
+    
+    // Load repository configuration
+    const repoConfig = await config.loadConfigFromGitHub(octokit, repository.owner.login, repository.name);
     
     // Get the files changed in the PR
     const { data: files } = await octokit.rest.pulls.listFiles({
@@ -20,6 +26,32 @@ async function evaluateAutomergeRules(pullRequest, repository, octokit) {
       repo: repository.name,
       pull_number: pullRequest.number,
     });
+    
+    // Check if we have a custom rule that matches
+    const matchingRule = config.findMatchingRule(repoConfig, pullRequest, files);
+    if (matchingRule && matchingRule.actions.autoMerge) {
+      console.log(`✅ PR #${pullRequest.number} matches custom rule: ${matchingRule.name}`);
+      return { shouldMerge: true, reason: matchingRule.name, rule: matchingRule };
+    }
+    
+    // Fall back to built-in rules if no custom rules match
+    return await evaluateBuiltInRules(pullRequest, repository, files, octokit);
+    
+  } catch (error) {
+    console.error('Error evaluating automerge rules:', error);
+    return { shouldMerge: false, reason: 'evaluation-error' };
+  }
+}
+
+/**
+ * Evaluates built-in automerge rules
+ * @param {Object} pullRequest - The pull request data
+ * @param {Object} repository - The repository data
+ * @param {Array} files - Changed files
+ * @param {Object} octokit - GitHub API client
+ * @returns {Promise<Object>} - Evaluation result
+ */
+async function evaluateBuiltInRules(pullRequest, repository, files, octokit) {
     
     // Rule 1: Documentation-only changes
     const docFiles = files.filter(file => 
@@ -77,11 +109,6 @@ async function evaluateAutomergeRules(pullRequest, repository, octokit) {
     
     console.log(`❌ PR #${pullRequest.number} does not match automerge criteria`);
     return { shouldMerge: false, reason: 'no-matching-rules' };
-    
-  } catch (error) {
-    console.error('Error evaluating automerge rules:', error);
-    return { shouldMerge: false, reason: 'evaluation-error' };
-  }
 }
 
 /**
@@ -128,33 +155,53 @@ async function checkForMinorVersionUpdates(files, octokit, owner, repo, prNumber
  * @param {Object} repository - The repository data
  * @param {Object} octokit - GitHub API client
  * @param {string} reason - Reason for auto-merge
+ * @param {Object} rule - Optional rule that matched (for custom merge method)
  * @returns {Promise<boolean>} - Success status
  */
-async function performAutoMerge(pullRequest, repository, octokit, reason) {
+async function performAutoMerge(pullRequest, repository, octokit, reason, rule = null) {
   try {
     console.log(`Performing auto-merge for PR #${pullRequest.number} (${reason})`);
     
-    // First, create an approval review
-    await octokit.rest.pulls.createReview({
-      owner: repository.owner.login,
-      repo: repository.name,
-      pull_number: pullRequest.number,
-      event: 'APPROVE',
-      body: `✅ Automatically approved by Automerge Pro\n\nReason: ${reason}`
-    });
+    // Determine merge method from rule or use default
+    const mergeMethod = rule?.actions?.mergeMethod || 'squash';
     
-    // Wait a moment for the review to be processed
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // First, create an approval review if needed
+    if (!rule || rule.actions.autoApprove !== false) {
+      await octokit.rest.pulls.createReview({
+        owner: repository.owner.login,
+        repo: repository.name,
+        pull_number: pullRequest.number,
+        event: 'APPROVE',
+        body: `✅ Automatically approved by Automerge Pro\n\nReason: ${reason}`
+      });
+      
+      // Wait a moment for the review to be processed
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
     
     // Then merge the PR
     const mergeResult = await octokit.rest.pulls.merge({
       owner: repository.owner.login,
       repo: repository.name,
       pull_number: pullRequest.number,
-      merge_method: 'squash',
+      merge_method: mergeMethod,
       commit_title: `${pullRequest.title} (#${pullRequest.number})`,
       commit_message: `Automatically merged by Automerge Pro\n\nReason: ${reason}`
     });
+    
+    // Delete branch if configured
+    if (rule?.actions?.deleteBranch !== false && pullRequest.head.repo.id === pullRequest.base.repo.id) {
+      try {
+        await octokit.rest.git.deleteRef({
+          owner: repository.owner.login,
+          repo: repository.name,
+          ref: `heads/${pullRequest.head.ref}`
+        });
+        console.log(`🗑️ Deleted branch: ${pullRequest.head.ref}`);
+      } catch (error) {
+        console.log(`⚠️ Could not delete branch ${pullRequest.head.ref}: ${error.message}`);
+      }
+    }
     
     console.log(`✅ Successfully auto-merged PR #${pullRequest.number}`);
     return true;

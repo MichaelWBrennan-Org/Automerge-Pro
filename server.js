@@ -2,6 +2,7 @@ const express = require('express');
 const { createNodeMiddleware, createProbot } = require('probot');
 const automergeLogic = require('./src/automerge');
 const billing = require('./src/billing');
+const config = require('./src/config');
 
 const app = express();
 
@@ -34,7 +35,7 @@ probot.on(['pull_request'], async (context) => {
       if (evaluation.shouldMerge) {
         console.log(`Auto-merging PR #${pr.number} - ${evaluation.reason}`);
         
-        const success = await automergeLogic.performAutoMerge(pr, repository, octokit, evaluation.reason);
+        const success = await automergeLogic.performAutoMerge(pr, repository, octokit, evaluation.reason, evaluation.rule);
         
         if (success) {
           console.log(`✅ Successfully auto-merged PR #${pr.number}`);
@@ -122,6 +123,18 @@ probot.on(['installation', 'installation_repositories'], async (context) => {
 // Setup routes
 app.use('/webhooks/github', createNodeMiddleware(probot));
 
+// Billing webhook endpoint for marketplace events
+app.post('/webhooks/billing', express.json(), (req, res) => {
+  try {
+    console.log('Received billing webhook:', req.body.action);
+    billing.handleMarketplacePurchase(req.body);
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Error handling billing webhook:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
@@ -162,13 +175,14 @@ app.post('/api/validate/:accountId/:operation', (req, res) => {
 });
 
 // Start the server
+const PORT = process.env.PORT || 3000;
+
 async function start() {
-  const port = process.env.PORT || 3000;
-  
-  app.listen(port, () => {
-    console.log(`🚀 Automerge Pro server running on port ${port}`);
-    console.log(`📋 Health check: http://localhost:${port}/health`);
-    console.log(`🔧 Config endpoint: http://localhost:${port}/api/config`);
+  app.listen(PORT, () => {
+    console.log(`🚀 Automerge Pro app running on port ${PORT}`);
+    console.log(`📋 Health check: http://localhost:${PORT}/health`);
+    console.log(`🔧 Config endpoint: http://localhost:${PORT}/api/config`);
+    console.log(`💰 Billing webhook: http://localhost:${PORT}/webhooks/billing`);
   });
 }
 
