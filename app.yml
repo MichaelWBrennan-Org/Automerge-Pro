@@ -1,49 +1,40 @@
-name: AutoMerge Pro
-description: AI-powered automated pull request reviews and merging with intelligent risk scoring
-author: AutoMerge Pro Team
-url: https://automerge-pro.com
-setup_url: https://automerge-pro.com/setup
-redirect_url: https://automerge-pro.com/auth/callback
-
-request_oauth_on_install: true
-setup_on_update: true
-
+# app.yml - GitHub App Manifest
+name: Automerge-Pro
+url: https://yourappdomain.com
+hook_attributes:
+  url: https://yourappdomain.com/webhooks/github
+redirect_url: https://yourappdomain.com/setup/complete
+public: true
 default_permissions:
   pull_requests: write
-  contents: read
-  metadata: read
-  repository_hooks: write
   checks: read
-  statuses: read
+  metadata: read
+  contents: write
   issues: read
-  actions: read
-
+  administration: read
 default_events:
   - pull_request
-  - pull_request_review
-  - pull_request_review_comment
   - check_suite
   - check_run
-  - status
-  - push
-  - repository
   - installation
   - installation_repositories
   - marketplace_purchase
-
-webhook:
-  active: true
-  events:
-    - pull_request
-    - pull_request_review
-    - pull_request_review_comment
-    - check_suite
-    - check_run
-    - status
-    - push
-    - repository
-    - installation
-    - installation_repositories
-    - marketplace_purchase
-
-public: true
+  - push
+default_webhook_active: true
+webhook_secret: CHANGE_ME
+plans:
+  - name: Free
+    description: 1 repo, basic automerge rules
+    monthly_price_in_cents: 0
+    yearly_price_in_cents: 0
+    number_of_repos: 1
+  - name: Pro
+    description: Unlimited repos, advanced rules, compliance checks
+    monthly_price_in_cents: 1500
+    yearly_price_in_cents: 15000
+    number_of_repos: -1
+  - name: Enterprise
+    description: Unlimited repos + priority support & custom merge policies
+    monthly_price_in_cents: 5000
+    yearly_price_in_cents: 50000
+    number_of_repos: -1

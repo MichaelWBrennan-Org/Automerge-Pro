@@ -35,13 +35,66 @@ AutoMerge Pro intelligently automates your GitHub pull request workflow using ad
 
 ## 🚀 Quick Start
 
+### GitHub App Installation & Setup
+
+AutoMerge Pro is a GitHub App that can be run in two ways:
+
+**Option A: Simple Server (server.js)**
+- Single-file implementation using Probot
+- Perfect for getting started quickly
+- Includes basic automerge logic and billing handling
+
+**Option B: Sophisticated Backend (apps/backend/)**
+- Full-featured API server with Fastify.js
+- Advanced AI analysis, database storage, and comprehensive features
+- Production-ready architecture
+
 ### 1. Install the GitHub App
 
 [![Add to GitHub](https://img.shields.io/badge/Add%20to%20GitHub-AutoMerge%20Pro-brightgreen)](https://github.com/apps/automerge-pro)
 
 Click the button above or visit our [GitHub Marketplace listing](https://github.com/marketplace/automerge-pro) to install AutoMerge Pro on your repositories.
 
-### 2. Configure Your Rules
+### 2. Setup and Configuration
+
+**Environment Variables:**
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+```
+
+Required environment variables:
+- `APP_ID` - Your GitHub App ID
+- `PRIVATE_KEY` - Your GitHub App private key  
+- `WEBHOOK_SECRET` - Your GitHub App webhook secret
+
+**Running the Simple Server:**
+```bash
+# Install dependencies
+npm install
+
+# Start the simple server
+npm run server
+
+# Or with auto-reload for development
+npm run server:dev
+```
+
+**Running the Full Stack Application:**
+```bash
+# Install dependencies for all packages
+npm install
+
+# Start all services (backend, frontend, marketing site)
+npm run dev
+
+# Or build for production
+npm run build
+npm run start
+```
+
+### 3. Configure Your Rules
 
 You have two options for configuration:
 
@@ -69,7 +122,35 @@ You have two options for configuration:
 
 3. Rules in the config file take priority over dashboard rules
 
-### 3. Watch the Magic Happen
+### 4. Simple Server Features (server.js)
+
+The simple server implementation includes:
+
+**✅ Basic Automerge Rules:**
+- Documentation-only changes (`*.md`, `docs/`)
+- Small configuration file changes (`*.yml`, `*.json`, etc.)
+- Test-only changes (`test/`, `spec/`, `__tests__/`)
+- Minor dependency updates (patch/minor versions)
+
+**✅ Billing & Marketplace Integration:**
+- Handles GitHub Marketplace purchase events
+- Plan management (Free, Pro, Enterprise)
+- Usage validation and limits enforcement
+- Feature gating based on subscription
+
+**✅ GitHub App Events:**
+- Pull request events (opened, synchronized)
+- Installation management
+- Marketplace purchase events
+- Webhook signature validation
+
+**✅ API Endpoints:**
+- `GET /health` - Health check
+- `GET /api/config` - Get available plans
+- `GET /api/billing/:accountId` - Get subscription info
+- `POST /api/validate/:accountId/:operation` - Validate operations
+
+### 5. Watch the Magic Happen
 
 AutoMerge Pro will now automatically:
 - ✅ Analyze every pull request with AI

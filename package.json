@@ -13,6 +13,8 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "start": "turbo run start",
+    "server": "node server.js",
+    "server:dev": "nodemon server.js",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
     "test": "turbo run test",
@@ -20,6 +22,12 @@
     "db:generate": "cd apps/backend && npm run db:generate",
     "db:migrate": "cd apps/backend && npm run db:migrate",
     "db:studio": "cd apps/backend && npm run db:studio"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "probot": "^13.0.0",
+    "nodemon": "^3.0.0",
+    "js-yaml": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",
