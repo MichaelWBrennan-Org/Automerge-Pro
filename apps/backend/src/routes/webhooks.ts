@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { Webhooks } from '@octokit/webhooks';
 import { config } from '../config';
+import { featureGating } from '../services/feature-gating';
 
 const webhooks = new Webhooks({
   secret: config.auth.githubWebhookSecret
@@ -77,8 +78,14 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         case 'installation':
           await handleInstallationEvent(request.body as any, request);
           break;
-        case 'installation_repositories':
+      case 'installation_repositories':
           await handleInstallationRepositoriesEvent(request.body as any, request);
+          break;
+        case 'check_suite':
+          await handleCheckSuiteEvent(request.body as any, request);
+          break;
+        case 'check_run':
+          await handleCheckRunEvent(request.body as any, request);
           break;
       }
 
@@ -283,4 +290,117 @@ async function handleInstallationRepositoriesEvent(payload: any, request: Fastif
     where: { id: installationRecord.id },
     data: { repositoryCount: count }
   });
+
+  // Enforce plan limits after repository changes
+  const installationWithOrg = await request.prisma.installation.findUnique({
+    where: { id: installationRecord.id }
+  });
+
+  if (installationWithOrg) {
+    await featureGating.enforceRepositoryLimit(installationWithOrg.organizationId);
+  }
+}
+
+async function handleCheckSuiteEvent(payload: any, request: FastifyRequest) {
+  const { action, check_suite, repository } = payload;
+
+  if (!check_suite || !repository) {
+    return;
+  }
+
+  // Find pull requests associated with this check suite
+  const pullRequests = check_suite.pull_requests || [];
+  
+  for (const pr of pullRequests) {
+    const existingPR = await request.prisma.pullRequest.findUnique({
+      where: { githubId: pr.id.toString() }
+    });
+
+    if (existingPR) {
+      // Update or create check record
+      await request.prisma.pRCheck.upsert({
+        where: { githubId: check_suite.id.toString() },
+        create: {
+          githubId: check_suite.id.toString(),
+          pullRequestId: existingPR.id,
+          name: check_suite.app?.name || 'Unknown',
+          conclusion: check_suite.conclusion?.toUpperCase() || null,
+          status: check_suite.status,
+          detailsUrl: check_suite.details_url,
+          completedAt: check_suite.completed_at ? new Date(check_suite.completed_at) : null
+        },
+        update: {
+          conclusion: check_suite.conclusion?.toUpperCase() || null,
+          status: check_suite.status,
+          completedAt: check_suite.completed_at ? new Date(check_suite.completed_at) : null
+        }
+      });
+
+      // Trigger processing if check suite completed
+      if (action === 'completed' && check_suite.conclusion) {
+        const app = request.server as any;
+        const queues = app.queues;
+        if (queues?.prQueue) {
+          await queues.prQueue.add('process-pr', {
+            pullRequestId: existingPR.id,
+            repositoryId: existingPR.repositoryId,
+            action: 'checks_completed',
+            metadata: { event: 'check_suite', conclusion: check_suite.conclusion }
+          });
+        }
+      }
+    }
+  }
+}
+
+async function handleCheckRunEvent(payload: any, request: FastifyRequest) {
+  const { action, check_run, repository } = payload;
+
+  if (!check_run || !repository) {
+    return;
+  }
+
+  // Find pull requests associated with this check run
+  const pullRequests = check_run.pull_requests || [];
+  
+  for (const pr of pullRequests) {
+    const existingPR = await request.prisma.pullRequest.findUnique({
+      where: { githubId: pr.id.toString() }
+    });
+
+    if (existingPR) {
+      // Update or create check record
+      await request.prisma.pRCheck.upsert({
+        where: { githubId: check_run.id.toString() },
+        create: {
+          githubId: check_run.id.toString(),
+          pullRequestId: existingPR.id,
+          name: check_run.name,
+          conclusion: check_run.conclusion?.toUpperCase() || null,
+          status: check_run.status,
+          detailsUrl: check_run.details_url,
+          completedAt: check_run.completed_at ? new Date(check_run.completed_at) : null
+        },
+        update: {
+          conclusion: check_run.conclusion?.toUpperCase() || null,
+          status: check_run.status,
+          completedAt: check_run.completed_at ? new Date(check_run.completed_at) : null
+        }
+      });
+
+      // Trigger processing if check run completed  
+      if (action === 'completed' && check_run.conclusion) {
+        const app = request.server as any;
+        const queues = app.queues;
+        if (queues?.prQueue) {
+          await queues.prQueue.add('process-pr', {
+            pullRequestId: existingPR.id,
+            repositoryId: existingPR.repositoryId,
+            action: 'checks_completed',
+            metadata: { event: 'check_run', conclusion: check_run.conclusion }
+          });
+        }
+      }
+    }
+  }
 }

@@ -1,0 +1,108 @@
+# AutoMerge Pro Configuration
+# Place this file in the root of your repository as .automerge-pro.yml
+
+version: '1'
+
+# Merge Rules - Executed in order of appearance
+rules:
+  - name: "Auto-merge documentation"
+    description: "Automatically merge documentation-only changes"
+    enabled: true
+    conditions:
+      filePatterns:
+        - "*.md"
+        - "docs/**"
+        - "**/*.md"
+      maxRiskScore: 0.2
+      minApprovals: 0
+    actions:
+      autoApprove: true
+      autoMerge: true
+      notify: false
+      mergeMethod: "squash"
+      deleteBranch: true
+
+  - name: "Trusted authors"
+    description: "Auto-approve changes from trusted team members"
+    enabled: true
+    conditions:
+      authorPatterns:
+        - "dependabot[bot]"
+        - "@core-team/*"
+        - "octocat"
+      maxRiskScore: 0.4
+      requireTests: true
+    actions:
+      autoApprove: true
+      autoMerge: false
+      requireReviews: 1
+      notify: true
+
+  - name: "Test-only changes"
+    description: "Auto-approve test file changes"
+    enabled: true
+    conditions:
+      filePatterns:
+        - "**/*.test.ts"
+        - "**/*.test.js"
+        - "**/*.spec.ts"
+        - "__tests__/**"
+      maxRiskScore: 0.3
+    actions:
+      autoApprove: true
+      autoMerge: false
+      notify: false
+
+  - name: "Configuration files block"
+    description: "Block auto-approval for configuration changes"
+    enabled: true
+    conditions:
+      blockPatterns:
+        - "*.json"
+        - "*.yml"
+        - "*.yaml"
+        - "Dockerfile"
+        - ".env*"
+        - "*.config.*"
+    actions:
+      autoApprove: false
+      autoMerge: false
+      requireReviews: 2
+      notify: true
+
+# Notification Settings (Requires Team plan or higher)
+notifications:
+  slack:
+    webhookUrl: "https://hooks.slack.com/your/webhook/url"
+    channels:
+      - "#deployments"
+      - "#engineering"
+    events:
+      - "auto_merged"
+      - "high_risk_pr"
+      - "rule_applied"
+
+  email:
+    recipients:
+      - "engineering@yourcompany.com"
+      - "devops@yourcompany.com"  
+    events:
+      - "high_risk_pr"
+      - "auto_merge_failed"
+
+# Global Settings
+settings:
+  # Enable AI-powered risk analysis (Requires Team plan or higher)
+  aiAnalysis: true
+  
+  # Risk threshold above which PRs require manual review
+  riskThreshold: 0.5
+  
+  # Automatically delete merged branches
+  autoDeleteBranches: true
+  
+  # Require all status checks to pass before auto-merge
+  requireStatusChecks: true
+  
+  # Allow force updates to PRs after auto-approval
+  allowForceUpdates: false

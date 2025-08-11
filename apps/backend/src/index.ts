@@ -13,6 +13,7 @@ import { rulesRoutes } from './routes/rules';
 import { webhookRoutes } from './routes/webhooks';
 import { billingRoutes } from './routes/billing';
 import { notificationRoutes } from './routes/notifications';
+import { configRoutes } from './routes/config';
 import { setupQueues } from './services/queue';
 import { config } from './config';
 
@@ -106,6 +107,7 @@ async function buildApp() {
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });
   await app.register(billingRoutes, { prefix: '/api/billing' });
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
+  await app.register(configRoutes, { prefix: '/api/config' });
 
   // Error handler
   app.setErrorHandler(async (error, request, reply) => {
