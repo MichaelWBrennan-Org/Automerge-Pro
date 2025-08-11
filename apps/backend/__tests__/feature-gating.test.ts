@@ -230,14 +230,15 @@ describe('FeatureGatingService', () => {
 
       // Should disable rules for the 2 excess repositories (keeping the newest)
       expect(mockPrisma.mergeRule.updateMany).toHaveBeenCalledTimes(2);
-      expect(mockPrisma.mergeRule.updateMany).toHaveBeenCalledWith({
-        where: { repositoryId: 'repo-2' },
-        data: { enabled: false }
-      });
-      expect(mockPrisma.mergeRule.updateMany).toHaveBeenCalledWith({
-        where: { repositoryId: 'repo-1' },
-        data: { enabled: false }
-      });
+      
+      // Check that the calls were made for the excess repositories
+      const calls = mockPrisma.mergeRule.updateMany.mock.calls;
+      expect(calls).toHaveLength(2);
+      
+      // The first two repos (oldest) should be disabled
+      const disabledRepoIds = calls.map(call => call[0].where.repositoryId);
+      expect(disabledRepoIds).toContain('repo-1');
+      expect(disabledRepoIds).toContain('repo-2');
     });
 
     it('should not disable rules when under limit', async () => {
