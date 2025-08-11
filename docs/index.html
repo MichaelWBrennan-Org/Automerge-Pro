@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automerge-Pro Documentation</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            line-height: 1.6; 
+            color: #333;
+        }
+        h1, h2, h3 { color: #0066cc; }
+        .status { 
+            background: #f0f8ff; 
+            border-left: 4px solid #007acc; 
+            padding: 15px; 
+            margin: 20px 0; 
+            border-radius: 4px;
+        }
+        .feature { 
+            background: #f8f9fa; 
+            border: 1px solid #e9ecef; 
+            border-radius: 6px; 
+            padding: 15px; 
+            margin: 10px 0; 
+        }
+        .feature h3 { margin-top: 0; color: #28a745; }
+        code { 
+            background: #f1f3f4; 
+            padding: 2px 6px; 
+            border-radius: 3px; 
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; 
+            font-size: 0.9em;
+        }
+        pre { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 6px; 
+            overflow-x: auto; 
+            border-left: 3px solid #007acc;
+        }
+        .plan { 
+            background: #fff;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        .plan h4 { margin-top: 0; color: #007acc; }
+        .price { font-size: 1.5em; font-weight: bold; color: #28a745; }
+        ul { padding-left: 20px; }
+        li { margin: 5px 0; }
+        .highlight { background: #fff3cd; padding: 10px; border-radius: 4px; border-left: 3px solid #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Automerge-Pro</h1>
+    <p>AI-powered GitHub Marketplace app for automated pull request reviews and merging</p>
+    
+    <div class="status">
+        <strong>🎉 Deployment Successful!</strong><br>
+        Your Automerge-Pro GitHub App backend has been successfully deployed to AWS Lambda with API Gateway.
+    </div>
+    
+    <h2>📋 Features</h2>
+    
+    <div class="feature">
+        <h3>✅ Smart Auto-Merge Rules</h3>
+        <p>Automatically merge PRs based on configurable rules and conditions:</p>
+        <ul>
+            <li>Documentation-only changes</li>
+            <li>Small configuration updates</li>
+            <li>Test-only changes from trusted authors</li>
+            <li>Minor dependency updates</li>
+            <li>Custom author patterns and file patterns</li>
+        </ul>
+    </div>
+    
+    <div class="feature">
+        <h3>🤖 AI Analysis</h3>
+        <p>Advanced AI-powered risk assessment for pull requests with fallback to heuristic analysis</p>
+    </div>
+    
+    <div class="feature">
+        <h3>⚙️ Configuration</h3>
+        <p>Flexible configuration via <code>.automerge-pro.yml</code> with comprehensive schema validation</p>
+    </div>
+    
+    <div class="feature">
+        <h3>🔗 GitHub Integration</h3>
+        <p>Full GitHub webhooks integration supporting:</p>
+        <ul>
+            <li>Pull request events</li>
+            <li>Marketplace purchase events</li>
+            <li>Installation events</li>
+            <li>Real-time webhook processing</li>
+        </ul>
+    </div>
+
+    <h2>💰 Billing Tiers</h2>
+    
+    <div class="plan">
+        <h4>Free Plan</h4>
+        <div class="price">$0/month</div>
+        <ul>
+            <li>1 repository</li>
+            <li>Basic automerge rules</li>
+            <li>Community support</li>
+        </ul>
+    </div>
+    
+    <div class="plan">
+        <h4>Pro Plan</h4>
+        <div class="price">$15/month</div>
+        <ul>
+            <li>Unlimited repositories</li>
+            <li>Advanced rules and compliance checks</li>
+            <li>AI analysis</li>
+            <li>Priority support</li>
+        </ul>
+    </div>
+    
+    <div class="plan">
+        <h4>Enterprise Plan</h4>
+        <div class="price">$50/month</div>
+        <ul>
+            <li>Everything in Pro</li>
+            <li>Priority support & custom merge policies</li>
+            <li>Advanced compliance features</li>
+            <li>Custom integrations</li>
+        </ul>
+    </div>
+    
+    <h2>🛠️ Configuration</h2>
+    <p>Create a <code>.automerge-pro.yml</code> file in your repository root:</p>
+    <pre><code>version: '1'
+rules:
+  - name: "Auto-merge dependabot"
+    description: "Automatically merge dependabot PRs"
+    enabled: true
+    conditions:
+      authorPatterns: ["dependabot[bot]"]
+      maxRiskScore: 0.3
+    actions:
+      autoApprove: true
+      autoMerge: true
+      mergeMethod: "squash"
+      deleteBranch: true
+
+  - name: "Documentation updates"
+    description: "Auto-merge documentation changes"
+    enabled: true
+    conditions:
+      filePatterns: ["docs/**", "*.md"]
+      blockPatterns: ["src/**"]
+    actions:
+      autoApprove: true
+      autoMerge: true
+      mergeMethod: "squash"
+
+settings:
+  aiAnalysis: false
+  riskThreshold: 0.5
+  autoDeleteBranches: true
+  requireStatusChecks: true
+  allowForceUpdates: false</code></pre>
+    
+    <div class="highlight">
+        <strong>💡 Pro Tip:</strong> Start with conservative rules and gradually expand as you become comfortable with the automation.
+    </div>
+    
+    <h2>📚 API Endpoints</h2>
+    <p>The backend provides several REST API endpoints:</p>
+    <ul>
+        <li><code>GET /health</code> - Health check and system status</li>
+        <li><code>GET /api/config</code> - Get available plans and configuration</li>
+        <li><code>GET /api/billing/:accountId</code> - Get subscription info for account</li>
+        <li><code>POST /api/validate/:accountId/:operation</code> - Validate operations against billing limits</li>
+        <li><code>POST /webhooks/github</code> - GitHub webhook endpoint</li>
+        <li><code>POST /webhooks/billing</code> - Marketplace billing webhook</li>
+    </ul>
+    
+    <h2>🚀 Deployment Architecture</h2>
+    <p>This application is deployed using:</p>
+    <ul>
+        <li><strong>AWS Lambda</strong> - Serverless compute with automatic scaling</li>
+        <li><strong>API Gateway</strong> - HTTP API routing and management</li>
+        <li><strong>AWS SAM</strong> - Infrastructure as Code deployment</li>
+        <li><strong>GitHub Actions</strong> - Automated CI/CD pipeline</li>
+        <li><strong>GitHub Pages</strong> - Static documentation hosting</li>
+    </ul>
+    
+    <h2>🔐 Security Features</h2>
+    <ul>
+        <li>Environment variable based configuration</li>
+        <li>GitHub App authentication with minimal permissions</li>
+        <li>Webhook secret verification</li>
+        <li>CORS headers for API security</li>
+        <li>Input validation and sanitization</li>
+    </ul>
+    
+    <h2>📖 Getting Started</h2>
+    <ol>
+        <li>Install the GitHub App from the marketplace</li>
+        <li>Configure repository access</li>
+        <li>Create <code>.automerge-pro.yml</code> configuration</li>
+        <li>Open a test pull request to verify automation</li>
+        <li>Monitor and adjust rules as needed</li>
+    </ol>
+    
+    <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666;">
+        <p>🤖 Automerge-Pro • Intelligent GitHub Automation • <a href="https://github.com/MichaelWBrennan-Org/Automerge-Pro">GitHub Repository</a></p>
+        <p>Generated automatically by GitHub Actions</p>
+    </footer>
+</body>
+</html>

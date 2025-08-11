@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Automerge-Pro GitHub App Backend - Serverless deployment on AWS Lambda'
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        NODE_ENV: production
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment stage
+  
+  AppId:
+    Type: String
+    Description: GitHub App ID
+    NoEcho: true
+  
+  PrivateKey:
+    Type: String
+    Description: GitHub App Private Key (Base64 encoded)
+    NoEcho: true
+  
+  WebhookSecret:
+    Type: String
+    Description: GitHub Webhook Secret
+    NoEcho: true
+    Default: 'CHANGE_ME'
+
+Resources:
+  # Main Lambda function for the GitHub App
+  AutomergePro:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'automerge-pro-${Stage}'
+      CodeUri: ./
+      Handler: lambda.handler
+      Description: 'Automerge-Pro GitHub App Backend'
+      Environment:
+        Variables:
+          APP_ID: !Ref AppId
+          PRIVATE_KEY: !Ref PrivateKey
+          WEBHOOK_SECRET: !Ref WebhookSecret
+          STAGE: !Ref Stage
+      Events:
+        # GitHub webhooks via API Gateway
+        GitHubWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /webhooks/github
+            Method: post
+        
+        # Billing webhooks
+        BillingWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /webhooks/billing
+            Method: post
+            
+        # Health check endpoint
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /health
+            Method: get
+            
+        # API endpoints
+        ConfigApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /api/config
+            Method: get
+            
+        BillingInfoApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /api/billing/{accountId}
+            Method: get
+            
+        ValidateOperationApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /api/validate/{accountId}/{operation}
+            Method: post
+
+  # API Gateway for HTTP endpoints
+  AutomergeProApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'automerge-pro-api-${Stage}'
+      StageName: !Ref Stage
+      Description: 'API Gateway for Automerge-Pro GitHub App'
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      GatewayResponses:
+        DEFAULT_4xx:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+        DEFAULT_5xx:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+
+  # CloudWatch Log Group for the Lambda function
+  AutomergeProLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/automerge-pro-${Stage}'
+      RetentionInDays: 14
+
+  # IAM Role for Lambda function (automatically created by SAM, but we can customize)
+  AutomergeProRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'automerge-pro-lambda-role-${Stage}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AutomergeProPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/automerge-pro-${Stage}*'
+
+Outputs:
+  AutomergeProApi:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${AutomergeProApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/"
+    Export:
+      Name: !Sub 'automerge-pro-api-url-${Stage}'
+      
+  AutomergeProFunction:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt AutomergePro.Arn
+    Export:
+      Name: !Sub 'automerge-pro-function-arn-${Stage}'
+      
+  WebhookUrl:
+    Description: "GitHub Webhook URL"
+    Value: !Sub "https://${AutomergeProApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/webhooks/github"
+    Export:
+      Name: !Sub 'automerge-pro-webhook-url-${Stage}'
+      
+  BillingWebhookUrl:
+    Description: "Billing Webhook URL"
+    Value: !Sub "https://${AutomergeProApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/webhooks/billing"
+    Export:
+      Name: !Sub 'automerge-pro-billing-webhook-url-${Stage}'

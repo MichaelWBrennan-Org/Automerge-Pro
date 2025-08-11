@@ -57,3 +57,16 @@ prisma/dev.db*
 
 # Docker
 .dockerignore
+
+# AWS SAM build artifacts
+.aws-sam/
+samconfig.toml
+
+# Serverless Framework
+.serverless/
+
+# Vercel
+.vercel
+
+# Turbo
+.turbo
