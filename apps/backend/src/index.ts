@@ -14,7 +14,13 @@ import { webhookRoutes } from './routes/webhooks';
 import { billingRoutes } from './routes/billing';
 import { notificationRoutes } from './routes/notifications';
 import { configRoutes } from './routes/config';
+import { registerAnalyticsRoutes } from './routes/analytics';
 import { setupQueues } from './services/queue';
+import { AnalyticsService } from './services/analytics';
+import { DataPipelineService } from './services/data-pipeline';
+import { ReportingService } from './services/reporting';
+import { NotificationService } from './services/notification';
+import { AnalyticsWorker } from './services/analytics-worker';
 import { config } from './config';
 
 // Type augmentation for Fastify
@@ -88,8 +94,33 @@ async function buildApp() {
   // Setup job queues
   const queues = setupQueues(redis);
   
-  // Store queues in app context for route access
+  // Setup analytics services
+  const analyticsService = new AnalyticsService(prisma, redis);
+  const dataPipelineService = new DataPipelineService();
+  const notificationService = new NotificationService();
+  const reportingService = new ReportingService(prisma, redis, analyticsService, notificationService);
+  
+  // Setup analytics worker
+  const analyticsWorker = new AnalyticsWorker(
+    redis,
+    prisma,
+    dataPipelineService,
+    notificationService,
+    reportingService,
+    analyticsService
+  );
+  
+  // Initialize data pipeline
+  await dataPipelineService.initialize();
+  
+  // Schedule recurring jobs
+  await analyticsWorker.scheduleRecurringJobs();
+  
+  // Store services in app context for route access
   app.decorate('queues', queues);
+  app.decorate('analyticsService', analyticsService);
+  app.decorate('dataPipelineService', dataPipelineService);
+  app.decorate('reportingService', reportingService);
 
   // Health check
   app.get('/health', async () => {
@@ -108,6 +139,14 @@ async function buildApp() {
   await app.register(billingRoutes, { prefix: '/api/billing' });
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
   await app.register(configRoutes, { prefix: '/api/config' });
+  
+  // Register analytics routes
+  registerAnalyticsRoutes(
+    app, 
+    (app as any).analyticsService,
+    (app as any).reportingService,
+    (app as any).dataPipelineService
+  );
 
   // Error handler
   app.setErrorHandler(async (error, request, reply) => {

@@ -37,6 +37,36 @@ const configSchema = z.object({
     smtpUser: z.string().optional(),
     smtpPass: z.string().optional(),
     fromEmail: z.string().default('noreply@automerge-pro.com')
+  }),
+  analytics: z.object({
+    enabled: z.boolean().default(true),
+    provider: z.enum(['kinesis', 'bigquery', 'local']).default('local'),
+    aws: z.object({
+      region: z.string().default('us-east-1'),
+      kinesisStreamName: z.string().default('automerge-pro-events'),
+      accessKeyId: z.string().optional(),
+      secretAccessKey: z.string().optional()
+    }).optional(),
+    bigquery: z.object({
+      projectId: z.string(),
+      datasetId: z.string().default('automerge_pro'),
+      tableId: z.string().default('events'),
+      keyFilename: z.string().optional(),
+      credentials: z.string().optional()
+    }).optional(),
+    anomalyDetection: z.object({
+      enabled: z.boolean().default(true),
+      alertThresholds: z.object({
+        errorRate: z.number().default(0.05), // 5% error rate
+        responseTime: z.number().default(5000), // 5 seconds
+        userDropoff: z.number().default(0.3) // 30% drop
+      })
+    }),
+    reporting: z.object({
+      enabled: z.boolean().default(true),
+      schedule: z.string().default('0 9 * * MON'), // Every Monday at 9 AM
+      recipients: z.array(z.string()).default([])
+    })
   })
 });
 
@@ -77,6 +107,36 @@ const rawConfig = {
     smtpUser: process.env.SMTP_USER,
     smtpPass: process.env.SMTP_PASS,
     fromEmail: process.env.FROM_EMAIL || 'noreply@automerge-pro.com'
+  },
+  analytics: {
+    enabled: process.env.ANALYTICS_ENABLED !== 'false',
+    provider: (process.env.ANALYTICS_PROVIDER as 'kinesis' | 'bigquery' | 'local') || 'local',
+    aws: {
+      region: process.env.AWS_REGION || 'us-east-1',
+      kinesisStreamName: process.env.AWS_KINESIS_STREAM_NAME || 'automerge-pro-events',
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    bigquery: {
+      projectId: process.env.BIGQUERY_PROJECT_ID || '',
+      datasetId: process.env.BIGQUERY_DATASET_ID || 'automerge_pro',
+      tableId: process.env.BIGQUERY_TABLE_ID || 'events',
+      keyFilename: process.env.BIGQUERY_KEY_FILENAME,
+      credentials: process.env.BIGQUERY_CREDENTIALS
+    },
+    anomalyDetection: {
+      enabled: process.env.ANOMALY_DETECTION_ENABLED !== 'false',
+      alertThresholds: {
+        errorRate: parseFloat(process.env.ALERT_ERROR_RATE_THRESHOLD || '0.05'),
+        responseTime: parseInt(process.env.ALERT_RESPONSE_TIME_THRESHOLD || '5000'),
+        userDropoff: parseFloat(process.env.ALERT_USER_DROPOFF_THRESHOLD || '0.3')
+      }
+    },
+    reporting: {
+      enabled: process.env.SCHEDULED_REPORTING_ENABLED !== 'false',
+      schedule: process.env.REPORT_SCHEDULE || '0 9 * * MON',
+      recipients: process.env.REPORT_RECIPIENTS?.split(',') || []
+    }
   }
 };
 
