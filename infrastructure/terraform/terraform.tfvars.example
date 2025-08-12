@@ -1,0 +1,30 @@
+# Environment-specific configurations
+environment = "dev"
+aws_region  = "us-east-1"
+
+# GitHub App Configuration
+github_app_id         = "123456"  # Replace with your actual GitHub App ID
+github_private_key    = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"  # Replace with your actual private key
+github_webhook_secret = "your-webhook-secret-here"  # Replace with your actual webhook secret
+
+# API Keys
+openai_api_key = "sk-your-openai-api-key-here"  # Replace with your actual OpenAI API key
+jwt_secret     = "your-jwt-secret-here"  # Replace with a secure JWT secret
+
+# Optional: Custom domain
+# domain_name     = "api.automerge-pro.com"
+# certificate_arn = "arn:aws:acm:us-east-1:123456789:certificate/your-cert-id"
+
+# Optional: Notifications
+# notification_email  = "alerts@automerge-pro.com"
+# slack_webhook_url  = "https://hooks.slack.com/services/your/slack/webhook"
+
+# Performance and Security Settings
+lambda_memory_size    = 512
+lambda_timeout       = 30
+enable_monitoring    = true
+enable_xray         = true
+enable_vpc          = false  # Set to true for enhanced security in production
+
+# DynamoDB Configuration
+dynamodb_billing_mode = "PAY_PER_REQUEST"  # Use "PROVISIONED" for predictable workloads

@@ -1,40 +1,61 @@
-name: Marketing Automation
+name: 'Marketing Automation'
 
 on:
   schedule:
-    # Run daily at 9 AM UTC for social media posts
-    - cron: '0 9 * * *'
-    # Run weekly on Monday for promotional content generation
-    - cron: '0 10 * * 1'
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
   workflow_dispatch:
     inputs:
-      content_type:
-        description: 'Type of content to generate'
+      campaign_type:
+        description: 'Marketing Campaign Type'
         required: true
-        default: 'social_post'
         type: choice
         options:
-        - social_post
-        - promotional_summary
-        - case_study
-        - feature_announcement
+          - social-media
+          - email-campaign
+          - case-study
+          - blog-post
+          - release-notes
       platform:
-        description: 'Platform to post to (for social posts)'
+        description: 'Social Media Platform (if applicable)'
         required: false
-        default: 'all'
         type: choice
         options:
-        - all
-        - twitter
-        - linkedin
-        - mastodon
+          - all
+          - linkedin
+          - twitter
+          - mastodon
+          - dev-to
+  
+  repository_dispatch:
+    types: [deployment_success, milestone_reached, case_study_request]
+
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+  TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+  TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+  TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+  TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+  MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+  MASTODON_SERVER_URL: ${{ secrets.MASTODON_SERVER_URL }}
+  MAILCHIMP_API_KEY: ${{ secrets.MAILCHIMP_API_KEY }}
+  MAILCHIMP_LIST_ID: ${{ secrets.MAILCHIMP_LIST_ID }}
+  DEV_TO_API_KEY: ${{ secrets.DEV_TO_API_KEY }}
 
 jobs:
-  generate-promotional-content:
+  generate-content:
+    name: 'Generate Marketing Content'
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' && github.event.schedule == '0 10 * * 1' || github.event.inputs.content_type == 'promotional_summary'
+    outputs:
+      content-generated: ${{ steps.generate.outputs.content-generated }}
+      social-posts: ${{ steps.generate.outputs.social-posts }}
+      email-content: ${{ steps.generate.outputs.email-content }}
+      blog-content: ${{ steps.generate.outputs.blog-content }}
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,64 +63,55 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      - name: Install dependencies
+      - name: Install Dependencies
         run: npm ci
       
-      - name: Generate promotional summary from README
-        id: generate_content
+      - name: Generate Content with AI
+        id: generate
         run: |
-          node -e "
-            const fs = require('fs');
-            const https = require('https');
-            
-            // Read README
-            const readme = fs.readFileSync('README.md', 'utf8');
-            
-            // Extract key features and benefits
-            const features = readme.match(/### .+/g) || [];
-            const benefits = readme.match(/- .+/g) || [];
-            
-            const prompt = \`Based on this README content, create engaging promotional content for Automerge-Pro:
-            
-            Features: \${features.join('\\n')}
-            Benefits: \${benefits.slice(0, 10).join('\\n')}
-            
-            Create:
-            1. A compelling 2-sentence summary
-            2. 3 key value propositions
-            3. A call-to-action
-            
-            Format as JSON with keys: summary, value_props (array), cta\`;
-            
-            // For demo purposes, generate static content (replace with OpenAI API call)
-            const content = {
-              summary: 'Automerge-Pro intelligently automates your GitHub pull request workflow using advanced AI risk scoring and customizable rules. Save hours of manual review time while maintaining code quality and security.',
-              value_props: [
-                '🤖 AI-powered risk analysis identifies potential issues before they reach your main branch',
-                '⚡ Automated merging for documentation, dependency updates, and low-risk changes',
-                '📊 Comprehensive dashboard with real-time analytics and team insights'
-              ],
-              cta: 'Start your free trial today and experience the future of automated code review!'
-            };
-            
-            fs.writeFileSync('marketing-content.json', JSON.stringify(content, null, 2));
-            console.log('Generated marketing content');
-          "
+          node scripts/marketing/generate-content.js \
+            --type="${{ github.event.inputs.campaign_type || 'social-media' }}" \
+            --platform="${{ github.event.inputs.platform || 'all' }}" \
+            --event-type="${{ github.event.action }}"
         env:
+          NODE_ENV: production
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       
-      - name: Upload marketing content
-        uses: actions/upload-artifact@v4
+      - name: Save Generated Content
+        run: |
+          mkdir -p marketing-output
+          echo '${{ steps.generate.outputs.social-posts }}' > marketing-output/social-posts.json
+          echo '${{ steps.generate.outputs.email-content }}' > marketing-output/email-content.json
+          echo '${{ steps.generate.outputs.blog-content }}' > marketing-output/blog-content.json
+      
+      - name: Upload Marketing Content
+        uses: actions/upload-artifact@v3
         with:
           name: marketing-content
-          path: marketing-content.json
-          retention-days: 30
-
-  social-media-posting:
+          path: marketing-output/
+          retention-days: 7
+  publish-social-media:
+    name: 'Publish Social Media Content'
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' && github.event.schedule == '0 9 * * *' || github.event.inputs.content_type == 'social_post'
+    needs: generate-content
+    if: needs.generate-content.outputs.content-generated == 'true' && (github.event.inputs.campaign_type == 'social-media' || github.event.schedule)
+    
+    strategy:
+      matrix:
+        platform: [linkedin, twitter, mastodon, dev-to]
+        exclude:
+          - platform: ${{ github.event.inputs.platform != 'all' && github.event.inputs.platform != matrix.platform && 'excluded' || 'included' }}
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Download Marketing Content
+        uses: actions/download-artifact@v3
+        with:
+          name: marketing-content
+          path: marketing-output/
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -107,78 +119,51 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Generate social media content
-        id: generate_social
+      - name: Publish to LinkedIn
+        if: matrix.platform == 'linkedin'
         run: |
-          node -e "
-            const posts = {
-              twitter: [
-                '🚀 Tired of manually reviewing every PR? Automerge-Pro uses AI to automatically merge safe changes like docs and dependency updates. Focus on what matters! #GitHub #DevOps #Automation',
-                '💡 Pro tip: With Automerge-Pro, your team can reduce PR review time by 60% while maintaining code quality. AI-powered risk scoring ensures only safe changes get merged automatically. #ProductivityHack',
-                '⚡ New feature alert! Automerge-Pro now includes compliance checks and security vulnerability detection. Keep your codebase secure while staying productive. #CodeSecurity #DevTools'
-              ],
-              linkedin: [
-                'Are you spending too much time on routine pull request reviews? Automerge-Pro is revolutionizing how development teams handle code reviews. Our AI-powered platform automatically identifies and merges low-risk changes like documentation updates, configuration changes, and dependency bumps, while flagging high-risk modifications for human review. The result? Teams save 5-10 hours per week on manual reviews while maintaining code quality and security. Ready to transform your workflow? Start your free trial today! #SoftwareDevelopment #DevOps #ProductivityTools',
-                'The future of code review is here! Automerge-Pro combines advanced AI risk scoring with customizable automation rules to streamline your development workflow. Our customers report 60% reduction in review time and 40% faster deployment cycles. Perfect for teams using GitHub who want to focus on building features instead of routine reviews. #TechInnovation #DeveloperTools #AgileMethodology'
-              ],
-              mastodon: [
-                '🛠️ Open source teams: Automerge-Pro now supports unlimited public repositories on our free tier! Automate your documentation and dependency updates while keeping your project secure. Perfect for maintainers managing multiple repos. #OpenSource #GitHub #Automation',
-                '🔒 Security-conscious developers: Our new compliance checking feature scans for vulnerabilities and breaking changes before auto-merging. AI-powered analysis + human oversight = the best of both worlds. #InfoSec #DevSecOps'
-              ]
-            };
-            
-            const platform = process.env.PLATFORM || 'all';
-            const selectedPosts = platform === 'all' ? posts : { [platform]: posts[platform] };
-            
-            // Randomly select one post per platform
-            const todaysPosts = {};
-            for (const [plat, postList] of Object.entries(selectedPosts)) {
-              if (postList && postList.length > 0) {
-                const randomIndex = Math.floor(Math.random() * postList.length);
-                todaysPosts[plat] = postList[randomIndex];
-              }
-            }
-            
-            console.log('Generated social posts:', JSON.stringify(todaysPosts, null, 2));
-            
-            // Set outputs
-            for (const [platform, post] of Object.entries(todaysPosts)) {
-              console.log(\`::set-output name=\${platform}_post::\${post}\`);
-            }
-          "
+          node scripts/marketing/publish-linkedin.js \
+            --content-file="marketing-output/social-posts.json"
         env:
-          PLATFORM: ${{ github.event.inputs.platform }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
       
-      - name: Post to Twitter/X
-        if: steps.generate_social.outputs.twitter_post != ''
+      - name: Publish to Twitter/X
+        if: matrix.platform == 'twitter'
         run: |
-          echo "Would post to Twitter: ${{ steps.generate_social.outputs.twitter_post }}"
-          # Integration with Twitter API would go here
-          # curl -X POST "https://api.twitter.com/2/tweets" \
-          #   -H "Authorization: Bearer ${{ secrets.TWITTER_BEARER_TOKEN }}" \
-          #   -H "Content-Type: application/json" \
-          #   -d '{"text": "${{ steps.generate_social.outputs.twitter_post }}"}'
+          node scripts/marketing/publish-twitter.js \
+            --content-file="marketing-output/social-posts.json"
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
       
-      - name: Post to LinkedIn
-        if: steps.generate_social.outputs.linkedin_post != ''
+      - name: Publish to Mastodon
+        if: matrix.platform == 'mastodon'
         run: |
-          echo "Would post to LinkedIn: ${{ steps.generate_social.outputs.linkedin_post }}"
-          # Integration with LinkedIn API would go here
+          node scripts/marketing/publish-mastodon.js \
+            --content-file="marketing-output/social-posts.json"
+        env:
+          MASTODON_ACCESS_TOKEN: ${{ secrets.MASTODON_ACCESS_TOKEN }}
+          MASTODON_SERVER_URL: ${{ secrets.MASTODON_SERVER_URL }}
       
-      - name: Post to Mastodon
-        if: steps.generate_social.outputs.mastodon_post != ''
+      - name: Publish to Dev.to
+        if: matrix.platform == 'dev-to'
         run: |
-          echo "Would post to Mastodon: ${{ steps.generate_social.outputs.mastodon_post }}"
-          # Integration with Mastodon API would go here
+          node scripts/marketing/publish-devto.js \
+            --content-file="marketing-output/blog-content.json"
+        env:
+          DEV_TO_API_KEY: ${{ secrets.DEV_TO_API_KEY }}
 
-  email-campaigns:
+  analyze-marketing-performance:
+    name: 'Analyze Marketing Performance'
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' && github.event.schedule == '0 10 * * 1' || github.event.inputs.content_type == 'feature_announcement'
+    needs: [publish-social-media]
+    if: always() && needs.publish-social-media.result == 'success'
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -186,194 +171,20 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Generate email campaign content
+      - name: Collect Marketing Analytics
         run: |
-          node -e "
-            const fs = require('fs');
-            
-            // Generate feature announcement email
-            const emailContent = {
-              subject: 'New Feature: Enhanced AI Risk Analysis in Automerge-Pro',
-              preheader: 'Smarter automation with improved security detection',
-              body: \`
-            <h1>🚀 Exciting Update: Enhanced AI Risk Analysis</h1>
-            
-            <p>Hi there,</p>
-            
-            <p>We're thrilled to announce a major enhancement to Automerge-Pro that will make your automated workflows even smarter and more secure.</p>
-            
-            <h2>What's New:</h2>
-            <ul>
-              <li><strong>🧠 Smarter Risk Detection:</strong> Our AI now analyzes code complexity, security implications, and potential breaking changes with 40% better accuracy</li>
-              <li><strong>🔒 Enhanced Security Scanning:</strong> Automatic detection of potential vulnerabilities in dependency updates</li>
-              <li><strong>📊 Improved Analytics:</strong> New dashboard insights showing automation savings and risk patterns</li>
-              <li><strong>⚙️ Custom Rule Templates:</strong> Pre-configured rules for popular frameworks and languages</li>
-            </ul>
-            
-            <h2>Customer Success Story:</h2>
-            <blockquote>
-              <p><em>"The enhanced AI analysis caught a potential security vulnerability in a dependency update that would have been automatically merged before. This feature alone has saved us from a potential production incident!"</em></p>
-              <p><strong>- Sarah Chen, Lead Developer at TechCorp</strong></p>
-            </blockquote>
-            
-            <p><strong>These features are now available to all Pro and Enterprise customers.</strong></p>
-            
-            <p>Free tier users can upgrade anytime to access these advanced capabilities.</p>
-            
-            <div style='text-align: center; margin: 30px 0;'>
-              <a href='https://github.com/marketplace/automerge-pro' style='background: #007acc; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px;'>Upgrade Your Plan</a>
-            </div>
-            
-            <p>Questions? Reply to this email or reach out to our support team.</p>
-            
-            <p>Happy automating!<br>The Automerge-Pro Team</p>
-            \`
-            };
-            
-            fs.writeFileSync('email-campaign.json', JSON.stringify(emailContent, null, 2));
-            console.log('Generated email campaign content');
-          "
+          node scripts/marketing/collect-analytics.js \
+            --timeframe="7d" \
+            --output-file="marketing-analytics.json"
+        env:
+          GOOGLE_ANALYTICS_KEY: ${{ secrets.GOOGLE_ANALYTICS_KEY }}
+          LINKEDIN_ANALYTICS_TOKEN: ${{ secrets.LINKEDIN_ANALYTICS_TOKEN }}
+          TWITTER_ANALYTICS_KEY: ${{ secrets.TWITTER_ANALYTICS_KEY }}
       
-      - name: Send email campaign via Mailchimp
+      - name: Generate Performance Report
         run: |
-          echo "Would send email campaign via Mailchimp API"
-          # Integration with Mailchimp API would go here
-          # curl -X POST "https://us1.api.mailchimp.com/3.0/campaigns" \
-          #   -H "Authorization: apikey ${{ secrets.MAILCHIMP_API_KEY }}" \
-          #   -H "Content-Type: application/json" \
-          #   -d @email-campaign.json
-
-  update-live-badges:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' && github.event.schedule == '0 9 * * *'
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Update GitHub stats badges
-        run: |
-          # Update shields.io badges with live data
-          echo "Updating live badges..."
-          
-          # Get GitHub stats
-          STARS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}" | \
-            jq -r '.stargazers_count')
-          
-          INSTALLS=$(curl -s "https://api.github.com/marketplace/automerge-pro/installations" | \
-            jq -r '.total_count' || echo "100+")
-          
-          echo "Stars: $STARS"
-          echo "Installs: $INSTALLS"
-          
-          # These would typically update a database or external service
-          # that serves dynamic badge data
-      
-      - name: Generate usage statistics
-        run: |
-          node -e "
-            // Simulate usage statistics (in production, this would query your database)
-            const stats = {
-              totalInstalls: 150,
-              activePRsProcessed: 2500,
-              timesSaved: '500+ hours',
-              securityIssuesCaught: 25,
-              lastUpdated: new Date().toISOString().split('T')[0]
-            };
-            
-            console.log('Usage Statistics:', JSON.stringify(stats, null, 2));
-            
-            // Update README with latest stats
-            const fs = require('fs');
-            const readme = fs.readFileSync('README.md', 'utf8');
-            
-            // This would update dynamic sections of the README
-            console.log('README updated with latest statistics');
-          "
-
-  generate-case-studies:
-    runs-on: ubuntu-latest
-    if: github.event.inputs.content_type == 'case_study'
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Generate realistic case studies
-        run: |
-          mkdir -p case-studies
-          
-          node -e "
-            const fs = require('fs');
-            
-            const caseStudies = [
-              {
-                title: 'TechCorp Reduces Review Time by 60%',
-                company: 'TechCorp',
-                industry: 'SaaS Platform',
-                challenge: 'Manual PR reviews were bottlenecking feature releases',
-                solution: 'Implemented Automerge-Pro with custom rules for documentation and dependency updates',
-                results: [
-                  '60% reduction in manual review time',
-                  '40% faster time to production',
-                  '0 production incidents from automated merges',
-                  '15+ hours saved per developer per month'
-                ],
-                quote: 'Automerge-Pro transformed our development workflow. We can now focus on complex code reviews while routine changes are handled automatically.',
-                author: 'Sarah Chen, Lead Developer'
-              },
-              {
-                title: 'OpenSource Project Scales Maintainer Efficiency',
-                company: 'ReactiveUI',
-                industry: 'Open Source',
-                challenge: 'Maintainers overwhelmed with documentation PRs and dependency updates',
-                solution: 'Free tier Automerge-Pro for automatic handling of non-code changes',
-                results: [
-                  '80% of documentation PRs auto-merged',
-                  '50% reduction in maintainer workload',
-                  'Faster community contribution processing',
-                  'Improved contributor satisfaction'
-                ],
-                quote: 'As an open source maintainer, Automerge-Pro helps me focus on reviewing actual feature contributions instead of routine updates.',
-                author: 'Michael Brennan, Maintainer'
-              }
-            ];
-            
-            caseStudies.forEach((study, index) => {
-              const filename = \`case-studies/\${study.company.toLowerCase().replace(/[^a-z0-9]/g, '-')}-case-study.md\`;
-              const content = \`# \${study.title}
-            
-            **Company:** \${study.company}  
-            **Industry:** \${study.industry}
-            
-            ## Challenge
-            \${study.challenge}
-            
-            ## Solution
-            \${study.solution}
-            
-            ## Results
-            \${study.results.map(r => \`- \${r}\`).join('\\n')}
-            
-            ## Customer Quote
-            > \"\${study.quote}\"
-            > 
-            > **— \${study.author}**
-            
-            ---
-            
-            *Interested in similar results for your team? [Start your free trial](https://github.com/marketplace/automerge-pro) today.*
-            \`;
-              
-              fs.writeFileSync(filename, content);
-              console.log(\`Generated case study: \${filename}\`);
-            });
-          "
-      
-      - name: Commit case studies
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add case-studies/
-          git diff --staged --quiet || git commit -m "Update case studies [automated]"
-          git push
+          node scripts/marketing/generate-performance-report.js \
+            --analytics-file="marketing-analytics.json" \
+            --output-format="json,pdf"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
