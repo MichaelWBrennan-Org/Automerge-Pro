@@ -94,9 +94,10 @@ export class ReportingService {
           return JSON.stringify(reportData, null, 2);
         case 'HTML':
           return this.generateHTMLReport(reportData);
-        case 'PDF':
+        case 'PDF': {
           const htmlContent = this.generateHTMLReport(reportData);
           return await this.convertToPDF(htmlContent);
+        }
         default:
           return this.generateHTMLReport(reportData);
       }
