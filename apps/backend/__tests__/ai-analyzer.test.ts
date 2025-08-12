@@ -1,43 +1,41 @@
 import { analyzeNextFilesPullRequest, PRAnalysisInput } from '../src/services/ai-analyzer';
 import { pullRequestFiles } from './mocks/webhook-payloads';
 
-// Mock OpenAI before importing the service
-const mockOpenAI = {
-  chat: {
-    completions: {
-      create: jest.fn().mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                riskScore: 0.2,
-                autoApprovalRecommended: true,
-                summary: 'Low-risk documentation changes',
-                concerns: [],
-                recommendations: ['Consider adding examples'],
-                categories: {
-                  security: 0.0,
-                  breaking: 0.0,
-                  complexity: 0.1,
-                  testing: 0.0,
-                  documentation: 0.9
-                }
-              })
-            }
-          }
-        ],
-        usage: {
-          prompt_tokens: 100,
-          completion_tokens: 50,
-          total_tokens: 150
-        }
-      })
-    }
-  }
-};
-
+// Mock OpenAI
 jest.mock('openai', () => {
-  return jest.fn().mockImplementation(() => mockOpenAI);
+  return jest.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: jest.fn().mockResolvedValue({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  riskScore: 0.2,
+                  autoApprovalRecommended: true,
+                  summary: 'Low-risk documentation changes',
+                  concerns: [],
+                  recommendations: ['Consider adding examples'],
+                  categories: {
+                    security: 0.0,
+                    breaking: 0.0,
+                    complexity: 0.1,
+                    testing: 0.0,
+                    documentation: 0.9
+                  }
+                })
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150
+          }
+        })
+      }
+    }
+  }));
 });
 
 describe('AI Analyzer', () => {

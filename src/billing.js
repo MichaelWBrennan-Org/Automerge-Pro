@@ -1,7 +1,17 @@
 /**
  * Billing Module
- * Handles GitHub Marketplace purchases and subscription management
+ * Handles GitHub Marketplace purchases and subscription management with DynamoDB storage
  */
+
+const crypto = require('crypto');
+const DynamoDB = require('aws-sdk/clients/dynamodb');
+
+// DynamoDB client
+const dynamodb = new DynamoDB.DocumentClient({
+  region: process.env.AWS_REGION || 'us-east-1'
+});
+
+const LICENSE_TABLE = process.env.LICENSE_TABLE || `automerge-pro-licenses-${process.env.STAGE || 'dev'}`;
 
 /**
  * Available subscription plans
@@ -35,6 +45,58 @@ const PLANS = {
 
 // In-memory storage for demo purposes (replace with database in production)
 const subscriptions = new Map();
+
+/**
+ * Generates a secure license key for an account
+ * @param {number} accountId - The account ID
+ * @param {string} subscriptionId - The subscription ID
+ * @returns {string} License key
+ */
+function generateLicenseKey(accountId, subscriptionId) {
+  return crypto.createHash('sha256')
+    .update(`${accountId}-${subscriptionId}-${process.env.WEBHOOK_SECRET || 'default'}`)
+    .digest('hex');
+}
+
+/**
+ * Stores license in DynamoDB
+ * @param {Object} licenseData - License data to store
+ */
+async function storeLicense(licenseData) {
+  try {
+    await dynamodb.put({
+      TableName: LICENSE_TABLE,
+      Item: {
+        ...licenseData,
+        updatedAt: new Date().toISOString()
+      }
+    }).promise();
+    
+    console.log(`✅ License stored for account ${licenseData.accountId}`);
+  } catch (error) {
+    console.error('Failed to store license in DynamoDB:', error);
+    throw error;
+  }
+}
+
+/**
+ * Retrieves license from DynamoDB
+ * @param {string} accountId - The account ID
+ * @returns {Object|null} License data or null
+ */
+async function getLicense(accountId) {
+  try {
+    const result = await dynamodb.get({
+      TableName: LICENSE_TABLE,
+      Key: { accountId: accountId.toString() }
+    }).promise();
+    
+    return result.Item || null;
+  } catch (error) {
+    console.error('Failed to get license from DynamoDB:', error);
+    return null;
+  }
+}
 
 /**
  * Handles marketplace purchase events
@@ -81,7 +143,32 @@ async function handlePurchase(purchase) {
   
   console.log(`New subscription: ${planName} for account ${purchase.account.login} (ID: ${accountId})`);
   
-  // Store subscription info
+  const subscriptionId = `sub_${accountId}_${Date.now()}`;
+  const licenseKey = generateLicenseKey(accountId, subscriptionId);
+  
+  const licenseData = {
+    accountId: accountId.toString(),
+    subscriptionId,
+    licenseKey,
+    account: purchase.account,
+    plan: purchase.plan,
+    planName,
+    status: 'active',
+    purchasedAt: new Date().toISOString(),
+    features: getPlanFeatures(planName),
+    metadata: {
+      billingCycle: purchase.billing_cycle,
+      unitCount: purchase.unit_count,
+      onFreeTrial: purchase.on_free_trial,
+      freeTrialEndsOn: purchase.free_trial_ends_on,
+      nextBillingDate: purchase.next_billing_date
+    }
+  };
+
+  // Store in DynamoDB
+  await storeLicense(licenseData);
+  
+  // Also store in memory for backward compatibility
   subscriptions.set(accountId, {
     account: purchase.account,
     plan: purchase.plan,
@@ -90,11 +177,7 @@ async function handlePurchase(purchase) {
     features: getPlanFeatures(planName)
   });
   
-  // Log the purchase
-  console.log(`✅ Subscription activated for ${purchase.account.login}`);
-  
-  // TODO: Send welcome email or notification
-  // TODO: Enable features for the account
+  console.log(`✅ Subscription activated for ${purchase.account.login}, license key: ${licenseKey.substring(0, 8)}...`);
 }
 
 /**
@@ -107,7 +190,35 @@ async function handlePlanChange(purchase) {
   
   console.log(`Plan change: ${newPlanName} for account ${purchase.account.login} (ID: ${accountId})`);
   
-  // Update subscription
+  // Get existing license
+  const existingLicense = await getLicense(accountId);
+  
+  const subscriptionId = existingLicense?.subscriptionId || `sub_${accountId}_${Date.now()}`;
+  const licenseKey = generateLicenseKey(accountId, subscriptionId);
+  
+  const licenseData = {
+    accountId: accountId.toString(),
+    subscriptionId,
+    licenseKey,
+    account: purchase.account,
+    plan: purchase.plan,
+    planName: newPlanName,
+    status: 'active',
+    changedAt: new Date().toISOString(),
+    features: getPlanFeatures(newPlanName),
+    metadata: {
+      billingCycle: purchase.billing_cycle,
+      unitCount: purchase.unit_count,
+      onFreeTrial: purchase.on_free_trial,
+      freeTrialEndsOn: purchase.free_trial_ends_on,
+      nextBillingDate: purchase.next_billing_date
+    }
+  };
+
+  // Update in DynamoDB
+  await storeLicense(licenseData);
+  
+  // Update in-memory for backward compatibility
   const existing = subscriptions.get(accountId) || {};
   subscriptions.set(accountId, {
     ...existing,
@@ -119,9 +230,6 @@ async function handlePlanChange(purchase) {
   });
   
   console.log(`✅ Plan updated to ${newPlanName} for ${purchase.account.login}`);
-  
-  // TODO: Update feature access
-  // TODO: Send confirmation email
 }
 
 /**
@@ -133,6 +241,20 @@ async function handleCancellation(purchase) {
   
   console.log(`Cancellation: account ${purchase.account.login} (ID: ${accountId})`);
   
+  // Get existing license and update status
+  const existingLicense = await getLicense(accountId);
+  
+  if (existingLicense) {
+    const licenseData = {
+      ...existingLicense,
+      status: 'cancelled',
+      cancelledAt: new Date().toISOString(),
+      features: getPlanFeatures('Free') // Revert to free features
+    };
+
+    await storeLicense(licenseData);
+  }
+  
   // Update subscription status
   const existing = subscriptions.get(accountId) || {};
   subscriptions.set(accountId, {
@@ -143,9 +265,6 @@ async function handleCancellation(purchase) {
   });
   
   console.log(`❌ Subscription cancelled for ${purchase.account.login}`);
-  
-  // TODO: Disable premium features
-  // TODO: Send cancellation confirmation
 }
 
 /**
@@ -323,5 +442,8 @@ module.exports = {
   getSubscription,
   getUsageLimits,
   validateOperation,
-  getPlanFeatures
+  getPlanFeatures,
+  generateLicenseKey,
+  storeLicense,
+  getLicense
 };

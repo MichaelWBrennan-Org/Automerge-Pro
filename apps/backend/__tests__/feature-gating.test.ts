@@ -236,7 +236,7 @@ describe('FeatureGatingService', () => {
       expect(calls).toHaveLength(2);
       
       // The first two repos (oldest) should be disabled
-      const disabledRepoIds = calls.map(call => call[0].where.repositoryId);
+      const disabledRepoIds = calls.map((call: any) => call[0].where.repositoryId);
       expect(disabledRepoIds).toContain('repo-1');
       expect(disabledRepoIds).toContain('repo-2');
     });

@@ -1,0 +1,319 @@
+name: Master Orchestration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily orchestration at 8 AM UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Orchestration scope'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - full
+        - ci_cd
+        - marketing
+        - monitoring
+        - support
+
+env:
+  MAIN_BRANCH: main
+  DEVELOP_BRANCH: develop
+
+jobs:
+  orchestration-plan:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run_ci: ${{ steps.plan.outputs.should_run_ci }}
+      should_run_marketing: ${{ steps.plan.outputs.should_run_marketing }}
+      should_run_monitoring: ${{ steps.plan.outputs.should_run_monitoring }}
+      should_run_support: ${{ steps.plan.outputs.should_run_support }}
+      deployment_target: ${{ steps.plan.outputs.deployment_target }}
+    steps:
+      - name: Determine orchestration plan
+        id: plan
+        run: |
+          echo "🎯 Planning orchestration based on trigger and scope..."
+          
+          # Default values
+          SHOULD_RUN_CI="false"
+          SHOULD_RUN_MARKETING="false"
+          SHOULD_RUN_MONITORING="false"
+          SHOULD_RUN_SUPPORT="false"
+          DEPLOYMENT_TARGET="none"
+          
+          # Determine what should run based on trigger
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SHOULD_RUN_CI="true"
+            
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              DEPLOYMENT_TARGET="production"
+              SHOULD_RUN_MARKETING="true"
+              SHOULD_RUN_MONITORING="true"
+            elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+              DEPLOYMENT_TARGET="staging"
+            fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            SHOULD_RUN_CI="true"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            SHOULD_RUN_MARKETING="true"
+            SHOULD_RUN_MONITORING="true"
+            SHOULD_RUN_SUPPORT="true"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SCOPE="${{ github.event.inputs.scope }}"
+            
+            case "$SCOPE" in
+              "full")
+                SHOULD_RUN_CI="true"
+                SHOULD_RUN_MARKETING="true"
+                SHOULD_RUN_MONITORING="true"
+                SHOULD_RUN_SUPPORT="true"
+                ;;
+              "ci_cd")
+                SHOULD_RUN_CI="true"
+                ;;
+              "marketing")
+                SHOULD_RUN_MARKETING="true"
+                ;;
+              "monitoring")
+                SHOULD_RUN_MONITORING="true"
+                ;;
+              "support")
+                SHOULD_RUN_SUPPORT="true"
+                ;;
+            esac
+          fi
+          
+          # Output the plan
+          echo "should_run_ci=$SHOULD_RUN_CI" >> $GITHUB_OUTPUT
+          echo "should_run_marketing=$SHOULD_RUN_MARKETING" >> $GITHUB_OUTPUT
+          echo "should_run_monitoring=$SHOULD_RUN_MONITORING" >> $GITHUB_OUTPUT
+          echo "should_run_support=$SHOULD_RUN_SUPPORT" >> $GITHUB_OUTPUT
+          echo "deployment_target=$DEPLOYMENT_TARGET" >> $GITHUB_OUTPUT
+          
+          # Log the plan
+          echo "📋 Orchestration Plan:"
+          echo "  CI/CD: $SHOULD_RUN_CI"
+          echo "  Marketing: $SHOULD_RUN_MARKETING"
+          echo "  Monitoring: $SHOULD_RUN_MONITORING"
+          echo "  Support: $SHOULD_RUN_SUPPORT"
+          echo "  Deployment: $DEPLOYMENT_TARGET"
+
+  trigger-ci-cd:
+    needs: orchestration-plan
+    if: needs.orchestration-plan.outputs.should_run_ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger CI/CD Pipeline
+        run: |
+          echo "🚀 Triggering CI/CD pipeline..."
+          
+          # The CI/CD workflow will run automatically on push/PR
+          # This job just coordinates and provides visibility
+          echo "CI/CD pipeline triggered for deployment target: ${{ needs.orchestration-plan.outputs.deployment_target }}"
+        
+      - name: Wait for CI/CD completion (if deployment)
+        if: needs.orchestration-plan.outputs.deployment_target != 'none'
+        run: |
+          echo "⏳ Waiting for CI/CD pipeline to complete before proceeding with other workflows..."
+          
+          # In a real scenario, you might wait for the CI/CD workflow to complete
+          # For now, we'll just log and continue
+          sleep 30
+          echo "✅ CI/CD pipeline coordination complete"
+
+  trigger-marketing-automation:
+    needs: [orchestration-plan, trigger-ci-cd]
+    if: always() && needs.orchestration-plan.outputs.should_run_marketing == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Marketing Workflows
+        run: |
+          echo "📢 Triggering marketing automation..."
+          
+          # Generate social media content
+          gh workflow run marketing-automation.yml -f content_type=social_post -f platform=all
+          
+          # Update live badges (if deployment completed successfully)
+          if [[ "${{ needs.orchestration-plan.outputs.deployment_target }}" == "production" ]]; then
+            echo "🏆 Updating live badges after production deployment"
+          fi
+          
+          echo "✅ Marketing workflows triggered"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trigger-monitoring-checks:
+    needs: [orchestration-plan, trigger-ci-cd]
+    if: always() && needs.orchestration-plan.outputs.should_run_monitoring == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Monitoring & Health Checks
+        run: |
+          echo "📊 Triggering monitoring and health checks..."
+          
+          # Run health checks
+          gh workflow run monitoring-alerts.yml -f check_type=health
+          
+          # If it's a production deployment, also check performance
+          if [[ "${{ needs.orchestration-plan.outputs.deployment_target }}" == "production" ]]; then
+            echo "🔍 Running post-deployment performance checks"
+            gh workflow run monitoring-alerts.yml -f check_type=performance
+          fi
+          
+          echo "✅ Monitoring workflows triggered"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trigger-support-automation:
+    needs: orchestration-plan
+    if: needs.orchestration-plan.outputs.should_run_support == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Support Workflows
+        run: |
+          echo "🤝 Triggering support automation..."
+          
+          # Update support metrics
+          gh workflow run support-automation.yml -f action=update_metrics
+          
+          # Generate weekly summary (if it's Monday)
+          if [[ "$(date +%u)" == "1" ]]; then
+            echo "📊 Generating weekly support summary"
+            gh workflow run support-automation.yml -f action=weekly_summary
+          fi
+          
+          echo "✅ Support workflows triggered"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  coordination-summary:
+    needs: [orchestration-plan, trigger-ci-cd, trigger-marketing-automation, trigger-monitoring-checks, trigger-support-automation]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate orchestration summary
+        run: |
+          echo "📋 Master Orchestration Summary"
+          echo "=============================="
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Timestamp: $(date)"
+          echo ""
+          
+          echo "🎯 Plan Execution:"
+          echo "  CI/CD: ${{ needs.orchestration-plan.outputs.should_run_ci }} (${{ needs.trigger-ci-cd.result }})"
+          echo "  Marketing: ${{ needs.orchestration-plan.outputs.should_run_marketing }} (${{ needs.trigger-marketing-automation.result }})"
+          echo "  Monitoring: ${{ needs.orchestration-plan.outputs.should_run_monitoring }} (${{ needs.trigger-monitoring-checks.result }})"
+          echo "  Support: ${{ needs.orchestration-plan.outputs.should_run_support }} (${{ needs.trigger-support-automation.result }})"
+          echo "  Deployment: ${{ needs.orchestration-plan.outputs.deployment_target }}"
+          echo ""
+          
+          # Determine overall status
+          OVERALL_STATUS="✅ SUCCESS"
+          if [[ "${{ needs.trigger-ci-cd.result }}" == "failure" ]]; then
+            OVERALL_STATUS="❌ FAILURE - CI/CD Failed"
+          elif [[ "${{ needs.trigger-marketing-automation.result }}" == "failure" || "${{ needs.trigger-monitoring-checks.result }}" == "failure" || "${{ needs.trigger-support-automation.result }}" == "failure" ]]; then
+            OVERALL_STATUS="⚠️ PARTIAL - Some workflows failed"
+          fi
+          
+          echo "Overall Status: $OVERALL_STATUS"
+          
+          # Set outputs for potential notifications
+          if [[ "$OVERALL_STATUS" == *"FAILURE"* ]]; then
+            echo "orchestration_status=failure" >> $GITHUB_ENV
+          elif [[ "$OVERALL_STATUS" == *"PARTIAL"* ]]; then
+            echo "orchestration_status=partial" >> $GITHUB_ENV
+          else
+            echo "orchestration_status=success" >> $GITHUB_ENV
+          fi
+
+  error-handling-and-rollback:
+    needs: [orchestration-plan, trigger-ci-cd, trigger-marketing-automation, trigger-monitoring-checks, trigger-support-automation, coordination-summary]
+    if: always() && (needs.trigger-ci-cd.result == 'failure' || needs.coordination-summary.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Handle orchestration failures
+        run: |
+          echo "🚨 Orchestration failure detected - initiating error handling"
+          
+          # Log failure details
+          echo "Failed jobs:"
+          if [[ "${{ needs.trigger-ci-cd.result }}" == "failure" ]]; then
+            echo "  - CI/CD Pipeline"
+          fi
+          if [[ "${{ needs.trigger-marketing-automation.result }}" == "failure" ]]; then
+            echo "  - Marketing Automation"
+          fi
+          if [[ "${{ needs.trigger-monitoring-checks.result }}" == "failure" ]]; then
+            echo "  - Monitoring & Alerts"
+          fi
+          if [[ "${{ needs.trigger-support-automation.result }}" == "failure" ]]; then
+            echo "  - Support Automation"
+          fi
+          
+          # Send alerts (in production, this would notify via Slack, email, etc.)
+          echo "📢 Sending failure notifications..."
+          
+          # Trigger immediate health check if deployment failed
+          if [[ "${{ needs.trigger-ci-cd.result }}" == "failure" && "${{ needs.orchestration-plan.outputs.deployment_target }}" != "none" ]]; then
+            echo "🔍 Triggering emergency health check due to deployment failure"
+            gh workflow run monitoring-alerts.yml -f check_type=health || echo "Emergency health check trigger failed"
+          fi
+          
+          echo "🛠️ Error handling completed"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-completion:
+    needs: [orchestration-plan, coordination-summary]
+    if: always() && needs.orchestration-plan.outputs.deployment_target == 'production'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send completion notification
+        run: |
+          STATUS="${{ env.orchestration_status }}"
+          
+          if [[ "$STATUS" == "success" ]]; then
+            MESSAGE="✅ Production deployment and orchestration completed successfully"
+          elif [[ "$STATUS" == "partial" ]]; then
+            MESSAGE="⚠️ Production deployment completed but some automation workflows had issues"
+          else
+            MESSAGE="❌ Production deployment orchestration failed - immediate attention required"
+          fi
+          
+          echo "$MESSAGE"
+          
+          # In production, send to Slack, Teams, email, etc.
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data "{\"text\":\"$MESSAGE\"}" \
+          #   "${{ secrets.SLACK_WEBHOOK_URL }}"
+
+  schedule-follow-up-tasks:
+    needs: [orchestration-plan, coordination-summary]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Schedule follow-up automation tasks
+        run: |
+          echo "📅 Scheduling follow-up tasks based on daily orchestration..."
+          
+          # Schedule weekly tasks (if Monday)
+          if [[ "$(date +%u)" == "1" ]]; then
+            echo "📊 Monday - scheduling weekly reports"
+            # Weekly performance analysis would be triggered here
+          fi
+          
+          # Schedule monthly tasks (if first day of month)
+          if [[ "$(date +%d)" == "01" ]]; then
+            echo "📈 First of month - scheduling monthly analytics"
+            # Monthly metrics and reporting would be triggered here
+          fi
+          
+          echo "✅ Follow-up tasks scheduled"

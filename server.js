@@ -3,6 +3,13 @@ const { createNodeMiddleware, createProbot } = require('probot');
 const automergeLogic = require('./src/automerge');
 const billing = require('./src/billing');
 const config = require('./src/config');
+const crypto = require('crypto');
+
+// DynamoDB client for license storage
+const DynamoDB = require('aws-sdk/clients/dynamodb');
+const dynamodb = new DynamoDB.DocumentClient({
+  region: process.env.AWS_REGION || 'us-east-1'
+});
 
 const app = express();
 
@@ -180,6 +187,350 @@ app.post('/api/validate/:accountId/:operation', (req, res) => {
   
   const validation = billing.validateOperation(accountId, operation, context);
   res.json(validation);
+});
+
+// License validation endpoint
+app.post('/validate-license', async (req, res) => {
+  try {
+    const { accountId, licenseKey, operation } = req.body;
+    
+    if (!accountId || !licenseKey) {
+      return res.status(400).json({
+        valid: false,
+        error: 'Missing required fields: accountId, licenseKey'
+      });
+    }
+
+    // Query license from DynamoDB
+    const licenseTable = process.env.LICENSE_TABLE || `automerge-pro-licenses-${process.env.STAGE || 'dev'}`;
+    
+    try {
+      const result = await dynamodb.get({
+        TableName: licenseTable,
+        Key: { accountId: accountId.toString() }
+      }).promise();
+      
+      const license = result.Item;
+      
+      if (!license) {
+        return res.status(404).json({
+          valid: false,
+          error: 'License not found'
+        });
+      }
+
+      // Validate license key
+      const expectedKey = crypto.createHash('sha256')
+        .update(`${accountId}-${license.subscriptionId}-${process.env.WEBHOOK_SECRET || 'default'}`)
+        .digest('hex');
+      
+      if (licenseKey !== expectedKey) {
+        return res.status(401).json({
+          valid: false,
+          error: 'Invalid license key'
+        });
+      }
+
+      // Check if license is active
+      if (license.status !== 'active') {
+        return res.status(403).json({
+          valid: false,
+          error: `License status: ${license.status}`,
+          status: license.status
+        });
+      }
+
+      // Validate specific operation if provided
+      let operationAllowed = true;
+      let reason = null;
+      
+      if (operation) {
+        const validation = billing.validateOperation(parseInt(accountId), operation, req.body);
+        operationAllowed = validation.allowed;
+        reason = validation.reason;
+      }
+
+      // Log successful license validation
+      console.log(`✅ License validated for account ${accountId}, plan: ${license.plan}`);
+
+      res.json({
+        valid: true,
+        accountId: parseInt(accountId),
+        plan: license.plan,
+        subscriptionId: license.subscriptionId,
+        features: license.features || [],
+        operationAllowed,
+        reason,
+        validatedAt: new Date().toISOString()
+      });
+      
+    } catch (dbError) {
+      console.error('DynamoDB error during license validation:', dbError);
+      return res.status(500).json({
+        valid: false,
+        error: 'Failed to validate license'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error validating license:', error);
+    res.status(500).json({
+      valid: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Submit feedback endpoint
+app.post('/submit-feedback', async (req, res) => {
+  try {
+    const { type, message, accountId, email, metadata } = req.body;
+    
+    if (!type || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: type, message'
+      });
+    }
+
+    const feedbackId = crypto.randomUUID();
+    const submittedAt = new Date().toISOString();
+    
+    const feedbackData = {
+      feedbackId,
+      type,
+      message,
+      accountId: accountId || 'anonymous',
+      email: email || null,
+      metadata: metadata || {},
+      submittedAt,
+      status: 'new'
+    };
+
+    // Store feedback in DynamoDB
+    const feedbackTable = process.env.FEEDBACK_TABLE || `automerge-pro-feedback-${process.env.STAGE || 'dev'}`;
+    
+    await dynamodb.put({
+      TableName: feedbackTable,
+      Item: feedbackData
+    }).promise();
+
+    console.log(`📝 New feedback submitted: ${feedbackId} (${type})`);
+
+    res.json({
+      success: true,
+      feedbackId,
+      message: 'Feedback submitted successfully',
+      submittedAt
+    });
+    
+  } catch (error) {
+    console.error('Error submitting feedback:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to submit feedback'
+    });
+  }
+});
+
+// Onboarding dashboard endpoint
+app.get('/onboarding', (req, res) => {
+  // Serve a simple onboarding dashboard
+  res.type('html').send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automerge-Pro Onboarding</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            line-height: 1.6; 
+        }
+        .step { 
+            background: #f8f9fa; 
+            border-left: 4px solid #007acc; 
+            padding: 20px; 
+            margin: 20px 0; 
+            border-radius: 6px; 
+        }
+        .step.completed { border-left-color: #28a745; background: #d4edda; }
+        .step.current { border-left-color: #ffc107; background: #fff3cd; }
+        code { 
+            background: #f1f3f4; 
+            padding: 2px 6px; 
+            border-radius: 3px; 
+            font-family: 'Monaco', 'Menlo', monospace; 
+        }
+        pre { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 6px; 
+            overflow-x: auto; 
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #007acc;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        .btn:hover { background: #005c99; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Welcome to Automerge-Pro</h1>
+    <p>Follow these steps to get your automated pull request merging set up in minutes!</p>
+    
+    <div class="step completed">
+        <h3>✅ Step 1: App Installation</h3>
+        <p>Great! You've successfully installed the Automerge-Pro GitHub App.</p>
+    </div>
+
+    <div class="step current">
+        <h3>⚙️ Step 2: Configure Your Rules</h3>
+        <p>Add a <code>.automerge-pro.yml</code> file to your repository root:</p>
+        <pre><code>version: '1'
+rules:
+  - name: "Auto-merge documentation"
+    enabled: true
+    conditions:
+      filePatterns: ["*.md", "docs/**"]
+      maxRiskScore: 0.2
+    actions:
+      autoApprove: true
+      autoMerge: true
+      mergeMethod: "squash"
+      deleteBranch: true
+      
+  - name: "Auto-merge dependabot"
+    enabled: true
+    conditions:
+      authorPatterns: ["dependabot[bot]"]
+      maxRiskScore: 0.3
+    actions:
+      autoApprove: true
+      autoMerge: true</code></pre>
+        <a href="#" class="btn" onclick="copyConfig()">Copy Configuration</a>
+    </div>
+
+    <div class="step">
+        <h3>🧪 Step 3: Test Your Setup</h3>
+        <p>Create a test pull request to see the magic happen:</p>
+        <ol>
+            <li>Edit your README.md file</li>
+            <li>Create a pull request</li>
+            <li>Watch Automerge-Pro automatically approve and merge it!</li>
+        </ol>
+        <a href="https://github.com/${process.env.GITHUB_OWNER || 'your-org'}" class="btn">Open GitHub</a>
+    </div>
+
+    <div class="step">
+        <h3>📊 Step 4: Monitor & Optimize</h3>
+        <p>Track your automation's performance and adjust rules as needed.</p>
+        <ul>
+            <li>Check merge times and success rates</li>
+            <li>Fine-tune risk score thresholds</li>
+            <li>Add more sophisticated rules</li>
+        </ul>
+        <a href="/api/billing/${process.env.DEFAULT_ACCOUNT_ID || '1'}" class="btn">View Billing Info</a>
+    </div>
+
+    <div class="step">
+        <h3>🎯 Step 5: Advanced Features</h3>
+        <p>Unlock powerful features with Pro and Enterprise plans:</p>
+        <ul>
+            <li>🤖 AI-powered risk analysis</li>
+            <li>🔒 Security vulnerability detection</li>
+            <li>📱 Slack/Teams notifications</li>
+            <li>📈 Advanced analytics</li>
+        </ul>
+        <a href="https://github.com/marketplace/automerge-pro" class="btn">Upgrade Plan</a>
+    </div>
+
+    <div class="step">
+        <h3>💡 Need Help?</h3>
+        <p>We're here to help you succeed!</p>
+        <ul>
+            <li>📖 <a href="https://docs.automerge-pro.com">Documentation</a></li>
+            <li>💬 <a href="mailto:support@automerge-pro.com">Email Support</a></li>
+            <li>🐛 <a href="https://github.com/issues">Report Issues</a></li>
+        </ul>
+        
+        <h4>Quick Feedback</h4>
+        <form id="feedbackForm" style="margin-top: 15px;">
+            <select id="feedbackType" style="margin-right: 10px; padding: 5px;">
+                <option value="suggestion">Suggestion</option>
+                <option value="bug">Bug Report</option>
+                <option value="question">Question</option>
+                <option value="praise">Praise</option>
+            </select>
+            <input type="text" id="feedbackMessage" placeholder="Your feedback..." style="width: 300px; padding: 5px; margin-right: 10px;">
+            <button type="submit" class="btn">Send Feedback</button>
+        </form>
+    </div>
+
+    <script>
+        function copyConfig() {
+            const config = \`version: '1'
+rules:
+  - name: "Auto-merge documentation"
+    enabled: true
+    conditions:
+      filePatterns: ["*.md", "docs/**"]
+      maxRiskScore: 0.2
+    actions:
+      autoApprove: true
+      autoMerge: true
+      mergeMethod: "squash"
+      deleteBranch: true\`;
+      
+            navigator.clipboard.writeText(config).then(() => {
+                alert('Configuration copied to clipboard!');
+            });
+        }
+
+        document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const type = document.getElementById('feedbackType').value;
+            const message = document.getElementById('feedbackMessage').value;
+            
+            if (!message) {
+                alert('Please enter your feedback');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/submit-feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type,
+                        message,
+                        metadata: { source: 'onboarding_dashboard' }
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('Thank you for your feedback!');
+                    document.getElementById('feedbackMessage').value = '';
+                } else {
+                    alert('Failed to send feedback. Please try again.');
+                }
+            } catch (error) {
+                alert('Error sending feedback. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>
+  `);
 });
 
 // Default route for Lambda health check

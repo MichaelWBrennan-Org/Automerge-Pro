@@ -52,6 +52,9 @@ Resources:
           PRIVATE_KEY: !Ref PrivateKey
           WEBHOOK_SECRET: !Ref WebhookSecret
           STAGE: !Ref Stage
+          LICENSE_TABLE: !Ref LicenseTable
+          FEEDBACK_TABLE: !Ref FeedbackTable
+          ONBOARDING_TABLE: !Ref OnboardingTable
       Events:
         # GitHub webhooks via API Gateway
         GitHubWebhook:
@@ -98,6 +101,112 @@ Resources:
             RestApiId: !Ref AutomergeProApi
             Path: /api/validate/{accountId}/{operation}
             Method: post
+            
+        # License validation endpoint
+        ValidateLicenseApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /validate-license
+            Method: post
+            
+        # Submit feedback endpoint
+        SubmitFeedbackApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /submit-feedback
+            Method: post
+            
+        # Onboarding dashboard
+        OnboardingDashboard:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AutomergeProApi
+            Path: /onboarding
+            Method: get
+
+  # DynamoDB table for license and subscription storage
+  LicenseTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'automerge-pro-licenses-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: accountId
+          AttributeType: S
+        - AttributeName: subscriptionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: accountId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: subscription-index
+          KeySchema:
+            - AttributeName: subscriptionId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Stage
+        - Key: Application
+          Value: automerge-pro
+
+  # DynamoDB table for feedback storage
+  FeedbackTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'automerge-pro-feedback-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: feedbackId
+          AttributeType: S
+        - AttributeName: submittedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: feedbackId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: submitted-at-index
+          KeySchema:
+            - AttributeName: submittedAt
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Environment
+          Value: !Ref Stage
+        - Key: Application
+          Value: automerge-pro
+
+  # DynamoDB table for onboarding metrics
+  OnboardingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'automerge-pro-onboarding-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: accountId
+          AttributeType: S
+        - AttributeName: stepName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: accountId
+          KeyType: HASH
+        - AttributeName: stepName
+          KeyType: RANGE
+      Tags:
+        - Key: Environment
+          Value: !Ref Stage
+        - Key: Application
+          Value: automerge-pro
 
   # API Gateway for HTTP endpoints
   AutomergeProApi:
@@ -153,8 +262,20 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
                 Resource: 
                   - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/automerge-pro-${Stage}*'
+                  - !GetAtt LicenseTable.Arn
+                  - !Sub '${LicenseTable.Arn}/index/*'
+                  - !GetAtt FeedbackTable.Arn
+                  - !Sub '${FeedbackTable.Arn}/index/*'
+                  - !GetAtt OnboardingTable.Arn
+                  - !Sub '${OnboardingTable.Arn}/index/*'
 
 Outputs:
   AutomergeProApi:
@@ -180,3 +301,21 @@ Outputs:
     Value: !Sub "https://${AutomergeProApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/webhooks/billing"
     Export:
       Name: !Sub 'automerge-pro-billing-webhook-url-${Stage}'
+      
+  LicenseTableName:
+    Description: "DynamoDB License Table Name"
+    Value: !Ref LicenseTable
+    Export:
+      Name: !Sub 'automerge-pro-license-table-${Stage}'
+      
+  FeedbackTableName:
+    Description: "DynamoDB Feedback Table Name"
+    Value: !Ref FeedbackTable
+    Export:
+      Name: !Sub 'automerge-pro-feedback-table-${Stage}'
+      
+  OnboardingTableName:
+    Description: "DynamoDB Onboarding Table Name"
+    Value: !Ref OnboardingTable
+    Export:
+      Name: !Sub 'automerge-pro-onboarding-table-${Stage}'

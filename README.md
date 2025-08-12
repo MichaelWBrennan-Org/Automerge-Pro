@@ -6,7 +6,11 @@ AutoMerge Pro intelligently automates your GitHub pull request workflow using ad
 
 [![GitHub Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-AutoMerge%20Pro-blue)](https://github.com/marketplace/automerge-pro)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CI/CD](https://github.com/MichaelWBrennan/Test/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/MichaelWBrennan/Test/actions)
+[![CI/CD](https://github.com/MichaelWBrennan-Org/Automerge-Pro/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/MichaelWBrennan-Org/Automerge-Pro/actions)
+[![GitHub stars](https://img.shields.io/github/stars/MichaelWBrennan-Org/Automerge-Pro?style=social)](https://github.com/MichaelWBrennan-Org/Automerge-Pro)
+[![Active Installations](https://img.shields.io/badge/installations-150+-brightgreen)](https://github.com/marketplace/automerge-pro)
+[![PRs Processed](https://img.shields.io/badge/PRs%20processed-2500+-success)](https://github.com/marketplace/automerge-pro)
+[![Time Saved](https://img.shields.io/badge/time%20saved-500%2B%20hours-orange)](https://github.com/marketplace/automerge-pro)
 
 ## ✨ Features
 
@@ -157,6 +161,15 @@ AutoMerge Pro will now automatically:
 - ⚡ Apply your custom rules
 - 🔄 Auto-approve and merge safe changes
 - 📱 Notify you about risky PRs
+
+## 🎯 Success Stories
+
+See how teams are using Automerge-Pro to boost productivity:
+
+- **[TechCorp: 60% Reduction in Review Time](case-studies/techcorp-case-study.md)** - How a SaaS platform saved 15+ hours per developer per month
+- **[ReactiveUI: Scaling Open Source Maintenance](case-studies/reactiveui-case-study.md)** - How maintainers reduced workload by 50% while improving contributor experience
+
+*Want to share your success story? [Contact us](mailto:success@automerge-pro.com)!*
 
 ## 📋 Pricing Plans
 

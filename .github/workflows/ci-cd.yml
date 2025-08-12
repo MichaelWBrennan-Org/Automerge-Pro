@@ -109,6 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       
@@ -121,12 +124,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Setup AWS CLI
+      - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_STAGING_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          # Fallback to access keys if OIDC not configured
+          aws-access-key-id: ${{ !secrets.AWS_STAGING_ROLE_ARN && secrets.AWS_ACCESS_KEY_ID || '' }}
+          aws-secret-access-key: ${{ !secrets.AWS_STAGING_ROLE_ARN && secrets.AWS_SECRET_ACCESS_KEY || '' }}
       
       - name: Setup AWS SAM
         uses: aws-actions/setup-sam@v2
@@ -149,12 +154,40 @@ jobs:
               WebhookSecret="${{ secrets.GITHUB_WEBHOOK_SECRET }}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
+      
+      - name: Run post-deployment health check
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          
+          # Get the API URL from CloudFormation outputs
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name automerge-pro-staging \
+            --query 'Stacks[0].Outputs[?OutputKey==`AutomergeProApi`].OutputValue' \
+            --output text)
+          
+          if [ -n "$API_URL" ]; then
+            echo "Testing staging deployment at $API_URL"
+            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}health" || echo "000")
+            
+            if [ "$HEALTH_RESPONSE" -eq 200 ]; then
+              echo "✅ Staging deployment health check passed"
+            else
+              echo "❌ Staging deployment health check failed (HTTP $HEALTH_RESPONSE)"
+              exit 1
+            fi
+          else
+            echo "⚠️ Could not retrieve API URL from CloudFormation"
+          fi
 
   deploy-aws-production:
     needs: [lint-and-test, build-and-package]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       
@@ -167,12 +200,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Setup AWS CLI
+      - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_PROD_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          # Fallback to access keys if OIDC not configured
+          aws-access-key-id: ${{ !secrets.AWS_PROD_ROLE_ARN && secrets.AWS_ACCESS_KEY_ID || '' }}
+          aws-secret-access-key: ${{ !secrets.AWS_PROD_ROLE_ARN && secrets.AWS_SECRET_ACCESS_KEY || '' }}
       
       - name: Setup AWS SAM
         uses: aws-actions/setup-sam@v2
@@ -195,6 +230,52 @@ jobs:
               WebhookSecret="${{ secrets.GITHUB_WEBHOOK_SECRET }}" \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
+      
+      - name: Run post-deployment health check
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          
+          # Get the API URL from CloudFormation outputs
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name automerge-pro-prod \
+            --query 'Stacks[0].Outputs[?OutputKey==`AutomergeProApi`].OutputValue' \
+            --output text)
+          
+          if [ -n "$API_URL" ]; then
+            echo "Testing production deployment at $API_URL"
+            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}health" || echo "000")
+            
+            if [ "$HEALTH_RESPONSE" -eq 200 ]; then
+              echo "✅ Production deployment health check passed"
+              echo "PROD_API_URL=$API_URL" >> $GITHUB_ENV
+            else
+              echo "❌ Production deployment health check failed (HTTP $HEALTH_RESPONSE)"
+              exit 1
+            fi
+          else
+            echo "⚠️ Could not retrieve API URL from CloudFormation"
+          fi
+      
+      - name: Trigger monitoring workflow
+        if: success()
+        run: |
+          # Trigger a health check after successful production deployment
+          gh workflow run monitoring-alerts.yml -f check_type=health
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Update live badges and metrics
+        if: success()
+        run: |
+          # This would typically update external services with deployment status
+          echo "✅ Production deployment completed successfully"
+          echo "API URL: ${{ env.PROD_API_URL }}"
+          
+          # Trigger marketing workflow to update live badges
+          gh workflow run marketing-automation.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-docs:
     needs: build-and-package
