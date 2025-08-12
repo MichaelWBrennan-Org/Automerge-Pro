@@ -55,7 +55,7 @@ export class ConfigurationService {
 
   async loadRepositoryConfig(owner: string, repo: string): Promise<AutomergeConfig> {
     try {
-      const { data } = await this.octokit.repos.getContent({
+      const { data } = await this.octokit.rest.repos.getContent({
         owner,
         repo,
         path: '.automerge-pro.yml'

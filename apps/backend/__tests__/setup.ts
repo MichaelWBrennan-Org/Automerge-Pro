@@ -1,5 +1,20 @@
 import { jest } from '@jest/globals';
 
+// Mock BullMQ before other imports
+jest.mock('bullmq', () => ({
+  Queue: jest.fn().mockImplementation(() => ({
+    // @ts-ignore
+    add: jest.fn().mockResolvedValue({ id: 'job-id' }),
+    // @ts-ignore
+    close: jest.fn().mockResolvedValue(undefined),
+    name: 'test-queue'
+  })),
+  Worker: jest.fn().mockImplementation(() => ({
+    // @ts-ignore
+    close: jest.fn().mockResolvedValue(undefined)
+  }))
+}));
+
 // Mock Prisma Client
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => ({
