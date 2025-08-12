@@ -1,0 +1,51 @@
+{
+  "name": "automerge-pro-cli",
+  "version": "1.0.0",
+  "description": "Enterprise CLI tool for Automerge-Pro management and operations",
+  "main": "automerge-pro-cli.js",
+  "bin": {
+    "automerge-pro": "./automerge-pro-cli.js"
+  },
+  "scripts": {
+    "start": "node automerge-pro-cli.js",
+    "test": "jest",
+    "build": "pkg automerge-pro-cli.js --targets node18-linux-x64,node18-macos-x64,node18-win-x64 --out-dir dist",
+    "publish-npm": "npm publish",
+    "install-global": "npm install -g ."
+  },
+  "keywords": [
+    "automerge",
+    "github",
+    "automation",
+    "cli",
+    "enterprise",
+    "devops",
+    "ci-cd"
+  ],
+  "author": "Automerge-Pro Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "chalk": "^4.1.2",
+    "commander": "^11.0.0",
+    "inquirer": "^8.2.6",
+    "js-yaml": "^4.1.0",
+    "open": "^8.4.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "pkg": "^5.8.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MichaelWBrennan-Org/Automerge-Pro.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/MichaelWBrennan-Org/Automerge-Pro/issues"
+  },
+  "homepage": "https://automerge-pro.dev"
+}
