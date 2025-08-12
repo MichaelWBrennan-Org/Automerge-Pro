@@ -23,18 +23,24 @@ class NotificationService {
     // Implementation for various notification types
   }
 
-  async sendEmail(to: string, subject: string, html: string) {
+  async sendEmail(emailData: { to: string; subject: string; html?: string; text?: string }) {
     if (!this.transporter) {
-      console.log('Email notification (SMTP not configured):', { to, subject });
+      console.log('Email notification (SMTP not configured):', emailData);
       return;
     }
 
     await this.transporter.sendMail({
       from: config.notifications.fromEmail,
-      to,
-      subject,
-      html
+      to: emailData.to,
+      subject: emailData.subject,
+      html: emailData.html,
+      text: emailData.text
     });
+  }
+
+  async sendSlackMessage(slackData: { message: string; channel?: string; organizationId?: string }) {
+    // Implementation for Slack notifications
+    console.log('Slack notification:', slackData);
   }
 
   async sendSlack(webhookUrl: string, message: any) {
@@ -43,4 +49,5 @@ class NotificationService {
   }
 }
 
+export { NotificationService };
 export const notificationService = new NotificationService();
