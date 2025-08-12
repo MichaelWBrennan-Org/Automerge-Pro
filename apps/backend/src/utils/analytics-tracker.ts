@@ -1,5 +1,5 @@
-import { AnalyticsService } from '../services/analytics.js';
-import { AnalyticsEventType } from '../types/index.js';
+import { AnalyticsService } from '../services/analytics';
+import { AnalyticsEventType } from '../types/index';
 
 /**
  * Analytics tracking helper - use this to easily add event tracking throughout the application

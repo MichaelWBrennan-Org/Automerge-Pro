@@ -1,9 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { AnalyticsService } from '../services/analytics.js';
-import { ReportingService } from '../services/reporting.js';
-import { DataPipelineService } from '../services/data-pipeline.js';
-import { AnalyticsEventType } from '../types/index.js';
+import { AnalyticsService } from '../services/analytics';
+import { ReportingService } from '../services/reporting';
+import { DataPipelineService } from '../services/data-pipeline';
+import { AnalyticsEventType } from '../types/index';
 
 // Request schemas
 const getMetricsSchema = z.object({

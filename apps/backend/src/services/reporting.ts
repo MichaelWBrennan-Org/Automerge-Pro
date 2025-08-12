@@ -1,10 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { Queue, Job } from 'bullmq';
 import { Redis } from 'ioredis';
-import { config } from '../config.js';
-import { AnalyticsService } from './analytics.js';
-import { NotificationService } from './notification.js';
-import { AnalyticsMetrics, ChartData, ReportConfig } from '../types/index.js';
+import { config } from '../config';
+import { AnalyticsService } from './analytics';
+import { NotificationService } from './notification';
+import { AnalyticsMetrics, ChartData, ReportConfig } from '../types/index';
 
 export interface ReportData {
   title: string;

@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { Queue, Job } from 'bullmq';
 import { Redis } from 'ioredis';
-import { config } from '../config.js';
+import { config } from '../config';
 import { 
   AnalyticsEvent, 
   AnalyticsEventType, 
@@ -9,7 +9,7 @@ import {
   AnomalyAlert, 
   DashboardData,
   ChartData
-} from '../types/index.js';
+} from '../types/index';
 
 export class AnalyticsService {
   private prisma: PrismaClient;

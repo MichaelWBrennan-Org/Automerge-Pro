@@ -1,12 +1,12 @@
 import { Worker, Job, Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
-import { config } from '../config.js';
-import { DataPipelineService } from '../services/data-pipeline.js';
-import { NotificationService } from '../services/notification.js';
-import { ReportingService } from '../services/reporting.js';
-import { AnalyticsService } from '../services/analytics.js';
-import { AnalyticsEvent, AnomalyAlert } from '../types/index.js';
+import { config } from '../config';
+import { AnalyticsService } from './analytics';
+import { DataPipelineService } from './data-pipeline';
+import { NotificationService } from './notification';
+import { ReportingService } from './reporting';
+import { AnalyticsEvent, AnomalyAlert } from '../types/index';
 
 export class AnalyticsWorker {
   private analyticsWorker: Worker;

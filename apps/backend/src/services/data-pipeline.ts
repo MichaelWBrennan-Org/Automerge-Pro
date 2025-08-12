@@ -1,7 +1,7 @@
 import AWS from 'aws-sdk';
 import { BigQuery } from '@google-cloud/bigquery';
-import { config } from '../config.js';
-import { AnalyticsEvent, AnomalyAlert } from '../types/index.js';
+import { config } from '../config';
+import { AnalyticsEvent, AnomalyAlert } from '../types/index';
 
 export interface DataPipelineProvider {
   sendEvent(event: AnalyticsEvent): Promise<void>;
