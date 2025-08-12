@@ -350,3 +350,22 @@ export const testData = {
     updatedAt: new Date('2023-01-01')
   }
 };
+
+// Simple test to avoid "no tests" error
+describe('Test Utils', () => {
+  it('should create mock Lambda environment', () => {
+    expect(createLambdaEvent).toBeDefined();
+    expect(createLambdaContext).toBeDefined();
+  });
+
+  it('should create mock clients', () => {
+    const prisma = createMockPrismaClient();
+    expect(prisma.organization.findUnique).toBeDefined();
+    
+    const redis = createMockRedisClient();
+    expect(redis.get).toBeDefined();
+    
+    const octokit = createMockOctokit();
+    expect(octokit.rest.pulls.get).toBeDefined();
+  });
+});

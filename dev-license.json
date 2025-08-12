@@ -1,0 +1,24 @@
+{
+  "accountId": "12345",
+  "subscriptionId": "sub_dev_1754964731714",
+  "licenseKey": "82bb5a2f35d7080c7f008b9176ae37f6a22f0607f3ee9ed5d37097fdf302722b",
+  "organizationName": "Test Org",
+  "plan": "Enterprise",
+  "status": "active",
+  "features": [
+    "unlimited_repos",
+    "advanced_rules",
+    "compliance_checks",
+    "ai_analysis",
+    "priority_support",
+    "custom_policies"
+  ],
+  "createdAt": "2025-08-12T02:12:11.714Z",
+  "expiresAt": "2025-11-10T02:12:11.714Z",
+  "metadata": {
+    "type": "development",
+    "billingCycle": "monthly",
+    "unitCount": 1,
+    "onFreeTrial": false
+  }
+}

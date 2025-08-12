@@ -231,7 +231,7 @@ describe('ConfigurationService', () => {
             name: 'Config rule',
             enabled: true,
             conditions: { filePatterns: ['*.md'] },
-            actions: { autoApprove: true, autoMerge: false }
+            actions: { autoApprove: true, autoMerge: false, notify: true }
           }
         ]
       };
@@ -266,7 +266,7 @@ describe('ConfigurationService', () => {
         description: undefined,
         enabled: true,
         conditions: { filePatterns: ['*.md'] },
-        actions: { autoApprove: true, autoMerge: false }
+        actions: { autoApprove: true, autoMerge: false, notify: true }
       });
 
       // Database rule that doesn't conflict should be included
