@@ -37,6 +37,53 @@ Parameters:
     NoEcho: true
     Default: 'CHANGE_ME'
 
+  # Additional parameters for enterprise features
+  OpenAIAPIKey:
+    Type: String
+    Description: OpenAI API Key for AI-powered features
+    NoEcho: true
+    Default: ''
+
+  MailchimpAPIKey:
+    Type: String
+    Description: Mailchimp API Key for email campaigns
+    NoEcho: true
+    Default: ''
+
+  TwitterAPIKey:
+    Type: String
+    Description: Twitter API Key for social media automation
+    NoEcho: true
+    Default: ''
+
+  LinkedInAPIKey:
+    Type: String
+    Description: LinkedIn API Key for professional social media
+    NoEcho: true
+    Default: ''
+
+  SnykToken:
+    Type: String
+    Description: Snyk token for security vulnerability scanning
+    NoEcho: true
+    Default: ''
+
+  BigQueryProjectID:
+    Type: String
+    Description: Google BigQuery Project ID for advanced analytics
+    Default: ''
+
+  AlertEmail:
+    Type: String
+    Description: Email address for critical alerts and notifications
+    Default: 'alerts@example.com'
+
+  SlackWebhookURL:
+    Type: String
+    Description: Slack webhook URL for team notifications
+    NoEcho: true
+    Default: ''
+
 Resources:
   # Main Lambda function for the GitHub App
   AutomergePro:
@@ -236,6 +283,204 @@ Resources:
       LogGroupName: !Sub '/aws/lambda/automerge-pro-${Stage}'
       RetentionInDays: 14
 
+  # Additional Lambda functions for enterprise features
+  MarketingAutomationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'automerge-pro-marketing-${Stage}'
+      CodeUri: ./
+      Handler: lambda.marketingHandler
+      Description: 'Marketing automation and social media management'
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIAPIKey
+          MAILCHIMP_API_KEY: !Ref MailchimpAPIKey
+          TWITTER_API_KEY: !Ref TwitterAPIKey
+          LINKEDIN_API_KEY: !Ref LinkedInAPIKey
+      Events:
+        ScheduledSocialPosts:
+          Type: Schedule
+          Properties:
+            Schedule: 'cron(0 9 ? * MON *)'  # Weekly on Monday at 9 AM
+            Description: 'Generate and schedule weekly social media posts'
+        
+  AnalyticsWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'automerge-pro-analytics-worker-${Stage}'
+      CodeUri: ./
+      Handler: lambda.analyticsHandler
+      Description: 'Process analytics events and generate insights'
+      ReservedConcurrencyLimit: 10
+      Environment:
+        Variables:
+          KINESIS_STREAM_NAME: !Ref AnalyticsKinesisStream
+          BIGQUERY_PROJECT_ID: !Ref BigQueryProjectID
+      Events:
+        KinesisStream:
+          Type: Kinesis
+          Properties:
+            Stream: !GetAtt AnalyticsKinesisStream.Arn
+            StartingPosition: LATEST
+            BatchSize: 100
+            MaximumBatchingWindowInSeconds: 5
+
+  SecurityScannerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'automerge-pro-security-scanner-${Stage}'
+      CodeUri: ./
+      Handler: lambda.securityHandler
+      Description: 'Automated security scanning and compliance checks'
+      Timeout: 900  # 15 minutes for security scans
+      MemorySize: 1024
+      Environment:
+        Variables:
+          SNYK_TOKEN: !Ref SnykToken
+          SECURITY_HUB_ARN: !Sub 'arn:aws:securityhub:${AWS::Region}:${AWS::AccountId}:hub/default'
+      Events:
+        DailyScan:
+          Type: Schedule
+          Properties:
+            Schedule: 'cron(0 2 * * ? *)'  # Daily at 2 AM
+            Description: 'Daily security vulnerability scan'
+
+  # Kinesis stream for real-time analytics
+  AnalyticsKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub 'automerge-pro-analytics-${Stage}'
+      ShardCount: 2
+      RetentionPeriodHours: 168  # 7 days
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: !Ref AnalyticsKMSKey
+      Tags:
+        - Key: Environment
+          Value: !Ref Stage
+        - Key: Application
+          Value: automerge-pro
+
+  # S3 bucket for data lake
+  DataLakeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'automerge-pro-datalake-${Stage}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref AnalyticsKMSKey
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+              - TransitionInDays: 365
+                StorageClass: DEEP_ARCHIVE
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt AnalyticsWorkerFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: raw-events/
+      Tags:
+        - Key: Environment
+          Value: !Ref Stage
+        - Key: Application
+          Value: automerge-pro
+
+  # KMS keys for encryption
+  AnalyticsKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: 'KMS key for Automerge-Pro analytics data encryption'
+      KeyPolicy:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Effect: Allow
+            Principal:
+              Service:
+                - kinesis.amazonaws.com
+                - s3.amazonaws.com
+                - lambda.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Stage
+        - Key: Application
+          Value: automerge-pro
+
+  AnalyticsKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/automerge-pro-analytics-${Stage}'
+      TargetKeyId: !Ref AnalyticsKMSKey
+
+  # SNS topic for critical alerts
+  CriticalAlertsTopicSNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'automerge-pro-critical-alerts-${Stage}'
+      DisplayName: 'Automerge-Pro Critical Alerts'
+      KmsMasterKeyId: !Ref AnalyticsKMSKey
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  # CloudWatch alarms for monitoring
+  HighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'AutomergePro-HighErrorRate-${Stage}'
+      AlarmDescription: 'Alert when error rate exceeds threshold'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AutomergePro
+      AlarmActions:
+        - !Ref CriticalAlertsTopicSNS
+
+  HighLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'AutomergePro-HighLatency-${Stage}'
+      AlarmDescription: 'Alert when function duration is high'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 25000  # 25 seconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AutomergePro
+      AlarmActions:
+        - !Ref CriticalAlertsTopicSNS
+
   # IAM Role for Lambda function (automatically created by SAM, but we can customize)
   AutomergeProRole:
     Type: AWS::IAM::Role
@@ -319,3 +564,46 @@ Outputs:
     Value: !Ref OnboardingTable
     Export:
       Name: !Sub 'automerge-pro-onboarding-table-${Stage}'
+
+  # Additional outputs for enterprise features
+  AnalyticsStreamName:
+    Description: "Kinesis Analytics Stream Name"
+    Value: !Ref AnalyticsKinesisStream
+    Export:
+      Name: !Sub 'automerge-pro-analytics-stream-${Stage}'
+
+  DataLakeBucketName:
+    Description: "S3 Data Lake Bucket Name"
+    Value: !Ref DataLakeBucket
+    Export:
+      Name: !Sub 'automerge-pro-datalake-bucket-${Stage}'
+
+  KMSKeyId:
+    Description: "KMS Key ID for encryption"
+    Value: !Ref AnalyticsKMSKey
+    Export:
+      Name: !Sub 'automerge-pro-kms-key-${Stage}'
+
+  AlertsTopicArn:
+    Description: "SNS Topic ARN for critical alerts"
+    Value: !Ref CriticalAlertsTopicSNS
+    Export:
+      Name: !Sub 'automerge-pro-alerts-topic-${Stage}'
+
+  MarketingFunctionArn:
+    Description: "Marketing Automation Function ARN"
+    Value: !GetAtt MarketingAutomationFunction.Arn
+    Export:
+      Name: !Sub 'automerge-pro-marketing-function-${Stage}'
+
+  SecurityScannerArn:
+    Description: "Security Scanner Function ARN"
+    Value: !GetAtt SecurityScannerFunction.Arn
+    Export:
+      Name: !Sub 'automerge-pro-security-scanner-${Stage}'
+
+  DashboardUrl:
+    Description: "Support and Analytics Dashboard URL"
+    Value: !Sub "https://${AutomergeProApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/dashboard"
+    Export:
+      Name: !Sub 'automerge-pro-dashboard-url-${Stage}'

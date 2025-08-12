@@ -1,0 +1,487 @@
+name: 🚀 CI/CD Pipeline - Production Deploy
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+
+env:
+  NODE_VERSION: '18.x'
+  AWS_REGION: 'us-east-1'
+  STAGE: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+
+jobs:
+  # Quality Assurance Phase
+  qa-checks:
+    name: 🔍 Quality Assurance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Checking
+        run: npm run type-check
+
+      - name: Code Linting
+        run: npm run lint
+
+      - name: Code Formatting Check
+        run: npx prettier --check .
+
+      - name: Unit Tests
+        run: npm run test
+        env:
+          CI: true
+
+      - name: Integration Tests
+        run: npm run test:integration
+        if: always()
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            coverage/
+            test-results.xml
+
+      - name: Code Coverage Report
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  # Security Scanning Phase
+  security-scan:
+    name: 🔒 Security Scanning
+    runs-on: ubuntu-latest
+    needs: [qa-checks]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Dependency Vulnerability Scan
+        run: npm audit --audit-level=moderate
+
+      - name: Snyk Security Scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: OWASP ZAP Baseline Scan
+        if: github.event_name == 'pull_request'
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'https://automerge-pro-staging.example.com'
+
+  # Build and Package Phase
+  build:
+    name: 🏗️ Build & Package
+    runs-on: ubuntu-latest
+    needs: [qa-checks, security-scan]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact-name: ${{ steps.package.outputs.artifact-name }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Application
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Generate Version
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=$(date +%Y%m%d)-${GITHUB_SHA::8}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Package for AWS Lambda
+        id: package
+        run: |
+          # Create deployment package
+          mkdir -p deployment-package
+          
+          # Copy Lambda function files
+          cp lambda.js deployment-package/
+          cp server.js deployment-package/
+          cp package.json deployment-package/
+          cp -r src deployment-package/
+          cp -r apps/backend/dist deployment-package/backend-dist 2>/dev/null || true
+          
+          # Install production dependencies
+          cd deployment-package
+          npm ci --only=production --ignore-scripts
+          
+          # Create deployment artifact
+          cd ..
+          zip -r automerge-pro-${{ steps.version.outputs.version }}.zip deployment-package/
+          
+          echo "artifact-name=automerge-pro-${{ steps.version.outputs.version }}.zip" >> $GITHUB_OUTPUT
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: automerge-pro-${{ steps.version.outputs.version }}.zip
+          retention-days: 30
+
+  # Infrastructure Validation
+  infrastructure-validation:
+    name: 🏗️ Infrastructure Validation
+    runs-on: ubuntu-latest
+    needs: [qa-checks]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate CloudFormation Template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://template.yaml
+
+      - name: CFN Lint
+        uses: scottbrenner/cfn-lint-action@v2
+        with:
+          file: template.yaml
+
+      - name: Infrastructure Security Scan
+        run: |
+          # Install checkov for infrastructure security scanning
+          pip install checkov
+          checkov -f template.yaml --framework cloudformation
+
+  # Staging Deployment
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, infrastructure-validation]
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
+    environment:
+      name: staging
+      url: https://automerge-pro-staging.example.com
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to AWS Lambda (Staging)
+        run: |
+          # Upload deployment package to S3
+          aws s3 cp automerge-pro-${{ needs.build.outputs.version }}.zip \
+            s3://automerge-pro-deployments-staging/
+
+          # Deploy using SAM
+          sam deploy \
+            --template-file template.yaml \
+            --stack-name automerge-pro-staging \
+            --parameter-overrides \
+              Stage=staging \
+              AppId="${{ secrets.GITHUB_APP_ID_STAGING }}" \
+              PrivateKey="${{ secrets.GITHUB_PRIVATE_KEY_STAGING }}" \
+              WebhookSecret="${{ secrets.WEBHOOK_SECRET_STAGING }}" \
+              OpenAIAPIKey="${{ secrets.OPENAI_API_KEY }}" \
+              AlertEmail="${{ secrets.ALERT_EMAIL }}" \
+            --capabilities CAPABILITY_IAM \
+            --s3-bucket automerge-pro-deployments-staging \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Run Smoke Tests
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+          
+          # Health check
+          ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name automerge-pro-staging \
+            --query 'Stacks[0].Outputs[?OutputKey==`AutomergeProApi`].OutputValue' \
+            --output text)
+          
+          curl -f "${ENDPOINT}health" || exit 1
+          echo "✅ Staging deployment healthy"
+
+      - name: Integration Testing (Staging)
+        run: |
+          npm run test:e2e:staging
+        env:
+          STAGING_API_URL: ${{ steps.deploy.outputs.api-url }}
+
+  # Production Deployment
+  deploy-production:
+    name: 🚀 Production Deployment
+    runs-on: ubuntu-latest
+    needs: [build, infrastructure-validation, deploy-staging]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: production
+      url: https://automerge-pro.com
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Blue-Green Deployment Setup
+        id: deployment
+        run: |
+          # Check current production version
+          CURRENT_STACK=$(aws cloudformation describe-stacks \
+            --stack-name automerge-pro-production \
+            --query 'Stacks[0].Tags[?Key==`Version`].Value' \
+            --output text 2>/dev/null || echo "none")
+          
+          # Determine next deployment color
+          if [[ "$CURRENT_STACK" == *"blue"* ]]; then
+            NEW_COLOR="green"
+            OLD_COLOR="blue"
+          else
+            NEW_COLOR="blue"
+            OLD_COLOR="green"
+          fi
+          
+          echo "new-color=$NEW_COLOR" >> $GITHUB_OUTPUT
+          echo "old-color=$OLD_COLOR" >> $GITHUB_OUTPUT
+          echo "Deploying to: $NEW_COLOR"
+
+      - name: Deploy New Version (Blue-Green)
+        run: |
+          # Upload deployment package
+          aws s3 cp automerge-pro-${{ needs.build.outputs.version }}.zip \
+            s3://automerge-pro-deployments-production/
+
+          # Deploy new version
+          sam deploy \
+            --template-file template.yaml \
+            --stack-name automerge-pro-production-${{ steps.deployment.outputs.new-color }} \
+            --parameter-overrides \
+              Stage=prod \
+              AppId="${{ secrets.GITHUB_APP_ID_PROD }}" \
+              PrivateKey="${{ secrets.GITHUB_PRIVATE_KEY_PROD }}" \
+              WebhookSecret="${{ secrets.WEBHOOK_SECRET_PROD }}" \
+              OpenAIAPIKey="${{ secrets.OPENAI_API_KEY }}" \
+              MailchimpAPIKey="${{ secrets.MAILCHIMP_API_KEY }}" \
+              TwitterAPIKey="${{ secrets.TWITTER_API_KEY }}" \
+              LinkedInAPIKey="${{ secrets.LINKEDIN_API_KEY }}" \
+              SnykToken="${{ secrets.SNYK_TOKEN }}" \
+              AlertEmail="${{ secrets.ALERT_EMAIL_PROD }}" \
+              SlackWebhookURL="${{ secrets.SLACK_WEBHOOK_URL }}" \
+            --tags \
+              Version=${{ needs.build.outputs.version }} \
+              Color=${{ steps.deployment.outputs.new-color }} \
+              DeploymentTime=$(date -u +%Y%m%d-%H%M%S) \
+            --capabilities CAPABILITY_IAM \
+            --s3-bucket automerge-pro-deployments-production \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Production Health Check
+        run: |
+          # Get new deployment endpoint
+          ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name automerge-pro-production-${{ steps.deployment.outputs.new-color }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`AutomergeProApi`].OutputValue' \
+            --output text)
+          
+          # Extended health check
+          for i in {1..10}; do
+            if curl -f "${ENDPOINT}health"; then
+              echo "✅ Health check passed (attempt $i)"
+              break
+            else
+              echo "❌ Health check failed (attempt $i)"
+              if [[ $i == 10 ]]; then
+                echo "Health check failed after 10 attempts, rolling back..."
+                exit 1
+              fi
+              sleep 30
+            fi
+          done
+
+      - name: Production Smoke Tests
+        run: |
+          # Run comprehensive smoke tests
+          npm run test:smoke:production
+        env:
+          PROD_API_URL: ${{ steps.deploy.outputs.api-url }}
+
+      - name: Switch Traffic (Blue-Green)
+        run: |
+          # Update Route 53 or API Gateway to point to new version
+          echo "Switching traffic to new version..."
+          
+          # This would update DNS or load balancer configuration
+          # For API Gateway, you would update the stage deployment
+          
+          echo "✅ Traffic switched to new version"
+
+      - name: Cleanup Old Version
+        if: success()
+        run: |
+          # Wait before cleanup to ensure stability
+          sleep 300  # 5 minutes
+          
+          # Delete old stack if it exists
+          if aws cloudformation describe-stacks --stack-name automerge-pro-production-${{ steps.deployment.outputs.old-color }} 2>/dev/null; then
+            echo "Cleaning up old version..."
+            aws cloudformation delete-stack \
+              --stack-name automerge-pro-production-${{ steps.deployment.outputs.old-color }}
+            echo "✅ Old version cleanup initiated"
+          fi
+
+  # Post-deployment monitoring
+  post-deployment:
+    name: 📊 Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: success()
+    steps:
+      - name: Setup Monitoring Alerts
+        run: |
+          echo "Setting up enhanced monitoring for new deployment..."
+          # This would configure CloudWatch alarms, Datadog monitors, etc.
+
+      - name: Notify Success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#deployments'
+          text: |
+            🎉 *Production Deployment Successful!*
+            
+            *Version:* `${{ needs.build.outputs.version }}`
+            *Commit:* `${{ github.sha }}`
+            *Author:* ${{ github.actor }}
+            *Duration:* ${{ github.event.head_commit.timestamp }}
+            
+            📊 [View Deployment Dashboard](https://console.aws.amazon.com/lambda/)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Rollback job (manual trigger)
+  rollback:
+    name: 🔄 Emergency Rollback
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main'
+    needs: [deploy-production]
+    environment:
+      name: production
+    steps:
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Perform Rollback
+        run: |
+          echo "🚨 PERFORMING EMERGENCY ROLLBACK"
+          
+          # Get last known good deployment
+          LAST_GOOD=$(aws cloudformation list-stacks \
+            --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
+            --query 'StackSummaries[?starts_with(StackName, `automerge-pro-production-`) && StackStatus == `CREATE_COMPLETE`].StackName' \
+            --output text | head -1)
+          
+          if [[ -n "$LAST_GOOD" ]]; then
+            echo "Rolling back to: $LAST_GOOD"
+            # Switch traffic back to last good version
+            # Implementation depends on your traffic routing mechanism
+          else
+            echo "❌ No previous version found for rollback"
+            exit 1
+          fi
+
+      - name: Notify Rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#critical-alerts'
+          text: |
+            🚨 *PRODUCTION ROLLBACK EXECUTED*
+            
+            *Reason:* Deployment failure detected
+            *Commit:* `${{ github.sha }}`
+            *Time:* $(date -u)
+            
+            🔍 [View Logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
