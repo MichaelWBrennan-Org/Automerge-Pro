@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📧 Direct Email Support
+    url: mailto:support@automerge-pro.com
+    about: For sensitive issues or Enterprise customers requiring immediate assistance
+  - name: 💬 Community Discussions
+    url: https://github.com/MichaelWBrennan-Org/Automerge-Pro/discussions
+    about: Ask questions and share ideas with the community
+  - name: 📖 Documentation
+    url: https://docs.automerge-pro.com
+    about: Comprehensive guides and API documentation
+  - name: 🚀 GitHub Marketplace
+    url: https://github.com/marketplace/automerge-pro
+    about: Install the app or upgrade your plan

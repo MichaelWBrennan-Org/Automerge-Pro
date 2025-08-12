@@ -1,0 +1,118 @@
+name: 🤝 Support Request
+description: Get help with setup, configuration, or usage
+title: "[Support]: "
+labels: ["support", "needs-triage"]
+assignees:
+  - MichaelWBrennan
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help with Automerge-Pro? We're here to assist! Please provide details about what you're trying to accomplish.
+
+  - type: dropdown
+    id: plan
+    attributes:
+      label: Current Plan
+      description: What plan are you currently using?
+      options:
+        - Free
+        - Pro
+        - Enterprise
+        - Trial
+        - Not installed yet
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Support Category
+      description: What area do you need help with?
+      options:
+        - Initial Setup & Installation
+        - Configuration (.automerge-pro.yml)
+        - Auto-merge Rules Not Working
+        - Billing & Subscription Issues
+        - Integration Problems (Slack, etc.)
+        - Performance Issues
+        - Understanding Features
+        - API Usage
+        - CLI Tools
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Please describe your question or the problem you're facing
+      placeholder: I'm trying to... but...
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: What steps have you already taken to solve this?
+      placeholder: |
+        1. I tried...
+        2. I checked...
+        3. I looked at...
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Details
+      description: Help us understand your setup
+      value: |
+        - **Repository**: [e.g., myorg/myrepo]
+        - **GitHub App Installation**: [Installed/Not installed]
+        - **Configuration file**: [Yes/No - using .automerge-pro.yml]
+        - **Team size**: [e.g., 5 developers]
+        - **Main use case**: [e.g., auto-merge docs, dependency updates]
+    validations:
+      required: false
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Current Configuration
+      description: If relevant, share your .automerge-pro.yml configuration (remove any sensitive data)
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: urgency
+    attributes:
+      label: Urgency
+      description: How urgent is this request and why?
+      placeholder: This is blocking... or I need this by...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information that might help us assist you
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues and documentation for an answer
+          required: true
+        - label: I have provided sufficient detail for someone to help me
+          required: true
+        - label: I understand that support response times depend on my current plan
+          required: true

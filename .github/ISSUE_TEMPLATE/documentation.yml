@@ -1,0 +1,92 @@
+name: 📚 Documentation Issue
+description: Report an issue with documentation or request documentation improvements
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+assignees:
+  - MichaelWBrennan
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us improve our documentation! Please let us know what's missing, unclear, or incorrect.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Documentation Issue Type
+      description: What type of documentation issue is this?
+      options:
+        - Missing Documentation
+        - Incorrect/Outdated Information
+        - Unclear Instructions
+        - Broken Links
+        - Typos/Grammar
+        - Code Examples Don't Work
+        - Missing Examples
+        - Organization/Structure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation issue located?
+      placeholder: |
+        - URL: https://docs.automerge-pro.com/...
+        - File: README.md, docs/setup.md, etc.
+        - Section: Configuration, API Reference, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What's the Issue?
+      description: Describe what's wrong, missing, or unclear
+      placeholder: The documentation says... but actually...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What Should It Say?
+      description: If you know what the correct information should be, please share it
+      placeholder: It should explain that...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Target Audience
+      description: Who is this documentation for?
+      options:
+        - New Users / Getting Started
+        - Existing Users / Configuration
+        - Developers / API
+        - System Administrators
+        - All Users
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help us improve the documentation
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to make sure this documentation issue hasn't been reported already
+          required: true
+        - label: I have checked that this information isn't covered elsewhere in the documentation
+          required: true
