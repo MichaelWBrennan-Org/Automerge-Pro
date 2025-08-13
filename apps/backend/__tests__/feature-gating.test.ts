@@ -208,9 +208,9 @@ describe('FeatureGatingService', () => {
       });
 
       const repositories = [
-        { ...testData.repository, id: 'repo-1', createdAt: new Date('2023-01-01') },
+        { ...testData.repository, id: 'repo-3', createdAt: new Date('2023-01-03') }, // newest first
         { ...testData.repository, id: 'repo-2', createdAt: new Date('2023-01-02') },
-        { ...testData.repository, id: 'repo-3', createdAt: new Date('2023-01-03') }
+        { ...testData.repository, id: 'repo-1', createdAt: new Date('2023-01-01') }  // oldest last
       ];
 
       mockPrisma.repository.findMany.mockResolvedValue(repositories);
@@ -235,10 +235,10 @@ describe('FeatureGatingService', () => {
       const calls = mockPrisma.mergeRule.updateMany.mock.calls;
       expect(calls).toHaveLength(2);
       
-      // The first two repos (oldest) should be disabled
+      // The excess repos (repo-2 and repo-1) should be disabled, keeping repo-3 (newest)
       const disabledRepoIds = calls.map((call: any) => call[0].where.repositoryId);
-      expect(disabledRepoIds).toContain('repo-1');
       expect(disabledRepoIds).toContain('repo-2');
+      expect(disabledRepoIds).toContain('repo-1');
     });
 
     it('should not disable rules when under limit', async () => {

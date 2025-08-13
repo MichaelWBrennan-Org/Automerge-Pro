@@ -1,49 +1,69 @@
 import { analyzeNextFilesPullRequest, PRAnalysisInput } from '../src/services/ai-analyzer';
 import { pullRequestFiles } from './mocks/webhook-payloads';
 
-// Mock OpenAI
+// Mock OpenAI module
 jest.mock('openai', () => {
   return jest.fn().mockImplementation(() => ({
     chat: {
       completions: {
-        create: jest.fn().mockResolvedValue({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  riskScore: 0.2,
-                  autoApprovalRecommended: true,
-                  summary: 'Low-risk documentation changes',
-                  concerns: [],
-                  recommendations: ['Consider adding examples'],
-                  categories: {
-                    security: 0.0,
-                    breaking: 0.0,
-                    complexity: 0.1,
-                    testing: 0.0,
-                    documentation: 0.9
-                  }
-                })
-              }
-            }
-          ],
-          usage: {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150
-          }
-        })
+        create: jest.fn()
       }
     }
   }));
 });
 
+// Mock config since OpenAI needs it
+jest.mock('../src/config', () => ({
+  config: {
+    openai: {
+      apiKey: 'test-key',
+      model: 'gpt-4'
+    }
+  }
+}));
+
 describe('AI Analyzer', () => {
+  let mockCreate: jest.MockedFunction<any>;
+
   beforeEach(() => {
     jest.clearAllMocks();
     
     // Set up environment variable for OpenAI
     process.env.OPENAI_API_KEY = 'test-openai-key';
+    
+    // Get reference to the mocked create function
+    const OpenAI = require('openai');
+    const openaiInstance = new OpenAI();
+    mockCreate = openaiInstance.chat.completions.create;
+    
+    // Set default mock response
+    mockCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              riskScore: 0.2,
+              autoApprovalRecommended: true,
+              summary: 'Low-risk documentation changes',
+              concerns: [],
+              recommendations: ['Consider adding examples'],
+              categories: {
+                security: 0.0,
+                breaking: 0.0,
+                complexity: 0.1,
+                testing: 0.0,
+                documentation: 0.9
+              }
+            })
+          }
+        }
+      ],
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 50,
+        total_tokens: 150
+      }
+    });
   });
 
   afterEach(() => {
@@ -77,8 +97,8 @@ describe('AI Analyzer', () => {
   });
 
   test('should flag high-risk security changes', async () => {
-    // Mock OpenAI to return high-risk analysis for security changes
-    mockOpenAI.chat.completions.create.mockResolvedValueOnce({
+    // Configure mock to return high-risk analysis for security changes
+    mockCreate.mockResolvedValueOnce({
       choices: [
         {
           message: {
@@ -137,7 +157,7 @@ describe('AI Analyzer', () => {
 
   test('should handle dependabot PRs with low risk', async () => {
     // Mock OpenAI to return low-risk analysis for dependency updates
-    mockOpenAI.chat.completions.create.mockResolvedValueOnce({
+    mockCreate.mockResolvedValueOnce({
       choices: [
         {
           message: {
@@ -190,7 +210,7 @@ describe('AI Analyzer', () => {
 
   test('should handle OpenAI API errors gracefully with fallback analysis', async () => {
     // Mock OpenAI to throw an error
-    mockOpenAI.chat.completions.create.mockRejectedValueOnce(
+    mockCreate.mockRejectedValueOnce(
       new Error('API rate limit exceeded')
     );
 
@@ -223,7 +243,7 @@ describe('AI Analyzer', () => {
 
   test('should handle invalid JSON response from OpenAI', async () => {
     // Mock OpenAI to return invalid JSON
-    mockOpenAI.chat.completions.create.mockResolvedValueOnce({
+    mockCreate.mockResolvedValueOnce({
       choices: [
         {
           message: {
