@@ -31,6 +31,14 @@ const configSchema = z.object({
     stripeWebhookSecret: z.string(),
     githubMarketplaceWebhookSecret: z.string()
   }),
+  stripe: z.object({
+    secretKey: z.string(),
+    publishableKey: z.string(),
+    webhookSecret: z.string(),
+    teamPriceId: z.string().optional(),
+    growthPriceId: z.string().optional(),
+    enterprisePriceId: z.string().optional()
+  }),
   notifications: z.object({
     smtpHost: z.string().optional(),
     smtpPort: z.number().optional(),
@@ -100,6 +108,14 @@ const rawConfig = {
     stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
     githubMarketplaceWebhookSecret: process.env.GITHUB_MARKETPLACE_WEBHOOK_SECRET || ''
+  },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+    teamPriceId: process.env.STRIPE_TEAM_PRICE_ID,
+    growthPriceId: process.env.STRIPE_GROWTH_PRICE_ID,
+    enterprisePriceId: process.env.STRIPE_ENTERPRISE_PRICE_ID
   },
   notifications: {
     smtpHost: process.env.SMTP_HOST,

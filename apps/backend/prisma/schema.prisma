@@ -9,17 +9,24 @@ datasource db {
 }
 
 model Organization {
-  id              String   @id @default(cuid())
-  githubId        String   @unique
-  login           String
-  name            String?
-  avatarUrl       String?
-  billingEmail    String?
-  plan            Plan     @default(FREE)
-  subscriptionId  String?
-  trialEndsAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  githubId             String   @unique
+  login                String
+  name                 String?
+  email                String?  // Add email field
+  avatarUrl            String?
+  billingEmail         String?
+  plan                 Plan     @default(FREE)
+  subscriptionId       String?
+  subscriptionStatus   String?  // active, canceled, trialing, etc.
+  stripeCustomerId     String?  // Stripe customer ID
+  stripeSubscriptionId String?  // Stripe subscription ID
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialEndsAt          DateTime?
+  metadata             Json?    // Additional flexible data
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   installations   Installation[]
   users           OrganizationUser[]
@@ -211,6 +218,22 @@ model WebhookEvent {
   processedAt DateTime?
 
   @@map("webhook_events")
+}
+
+model DemoRequest {
+  id           String   @id @default(cuid())
+  email        String
+  name         String
+  company      String
+  message      String?
+  repositories Int?
+  teamSize     Int?
+  status       String   @default("pending") // pending, contacted, demo_scheduled, converted, declined
+  requestedAt  DateTime @default(now())
+  contactedAt  DateTime?
+  notes        String?
+
+  @@map("demo_requests")
 }
 
 enum Plan {
