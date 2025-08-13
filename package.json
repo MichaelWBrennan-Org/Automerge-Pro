@@ -23,7 +23,9 @@
     "db:migrate": "cd apps/backend && npm run db:migrate",
     "db:studio": "cd apps/backend && npm run db:studio",
     "generate-dev-license": "node scripts/dev-license-cli.js",
-    "generate-license": "node scripts/dev-license-cli.js"
+    "generate-license": "node scripts/dev-license-cli.js",
+    "build:lambda": "./create-lambda-zip.sh",
+    "test:lambda": "node test-lambda-package.js"
   },
   "dependencies": {
     "@vendia/serverless-express": "^4.12.6",
