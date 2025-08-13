@@ -1,53 +1,66 @@
+import { Metadata } from 'next';
+import { HeroSection } from '../components/HeroSection';
+import { FeaturesSection } from '../components/FeaturesSection';
+import { DemoSection } from '../components/DemoSection';
+import { PricingSection } from '../components/PricingSection';
+import { TestimonialsSection } from '../components/TestimonialsSection';
+import { CTASection } from '../components/CTASection';
+import { FAQSection } from '../components/FAQSection';
+import { FooterSection } from '../components/FooterSection';
+
+export const metadata: Metadata = {
+  title: 'AutoMerge Pro - AI-Powered GitHub Automation | Increase Developer Productivity by 60%',
+  description: 'AutoMerge Pro uses GPT-4 AI to automatically review and merge pull requests. Save 15+ hours per developer per month with intelligent risk scoring and smart automation rules. Free 14-day trial.',
+  keywords: 'GitHub automation, pull request automation, AI code review, developer productivity, DevOps tools, GitHub app, code merge automation, CI/CD optimization, software development efficiency',
+  authors: [{ name: 'AutoMerge Pro Team' }],
+  openGraph: {
+    title: 'AutoMerge Pro - AI-Powered GitHub Automation',
+    description: 'Save 15+ hours per developer per month with AI-powered pull request automation. Free 14-day trial.',
+    url: 'https://automerge-pro.com',
+    siteName: 'AutoMerge Pro',
+    images: [{
+      url: 'https://automerge-pro.com/og-image.jpg',
+      width: 1200,
+      height: 630,
+      alt: 'AutoMerge Pro - AI-Powered GitHub Automation'
+    }],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'AutoMerge Pro - AI-Powered GitHub Automation',
+    description: 'Save 15+ hours per developer per month with AI-powered pull request automation.',
+    images: ['https://automerge-pro.com/twitter-image.jpg'],
+    creator: '@automerge_pro'
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  alternates: {
+    canonical: 'https://automerge-pro.com',
+  }
+};
+
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="container mx-auto px-4 py-16">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">
-            AutoMerge Pro
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            AI-powered automated pull request reviews and merging with intelligent risk scoring
-          </p>
-          <div className="space-x-4">
-            <a
-              href="https://github.com/marketplace/automerge-pro"
-              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700"
-            >
-              Install on GitHub
-            </a>
-            <a
-              href="/docs"
-              className="inline-block bg-gray-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-700"
-            >
-              View Documentation
-            </a>
-          </div>
-        </div>
-        
-        <div className="mt-16 grid md:grid-cols-3 gap-8">
-          <div className="text-center p-6 bg-white rounded-lg shadow">
-            <h3 className="text-xl font-semibold mb-4">AI-Powered Analysis</h3>
-            <p className="text-gray-600">
-              Advanced AI risk scoring using GPT-4 to analyze code changes and security implications.
-            </p>
-          </div>
-          
-          <div className="text-center p-6 bg-white rounded-lg shadow">
-            <h3 className="text-xl font-semibold mb-4">Smart Automation</h3>
-            <p className="text-gray-600">
-              Customizable rules for automatic approval and merging based on file patterns and risk scores.
-            </p>
-          </div>
-          
-          <div className="text-center p-6 bg-white rounded-lg shadow">
-            <h3 className="text-xl font-semibold mb-4">Team Collaboration</h3>
-            <p className="text-gray-600">
-              Real-time notifications, analytics dashboard, and team management features.
-            </p>
-          </div>
-        </div>
-      </main>
-    </div>
+    <>
+      <HeroSection />
+      <FeaturesSection />
+      <DemoSection />
+      <TestimonialsSection />
+      <PricingSection />
+      <CTASection />
+      <FAQSection />
+      <FooterSection />
+    </>
   );
 }

@@ -12,6 +12,18 @@ jest.mock('../src/config', () => ({
   }
 }));
 
+// Mock feature gating service
+const mockFeatureGating = {
+  getUsageStats: jest.fn(),
+  enforceRepositoryLimit: jest.fn(),
+  getPlanLimits: jest.fn(),
+  getOrganizationLimits: jest.fn()
+};
+
+jest.mock('../src/services/feature-gating', () => ({
+  featureGating: mockFeatureGating
+}));
+
 // Mock crypto module
 jest.mock('crypto', () => ({
   createHmac: jest.fn().mockReturnValue({
@@ -29,6 +41,9 @@ describe('Billing Routes', () => {
     fastify = createMockFastify();
     request = createMockFastifyRequest();
     reply = createMockFastifyReply();
+    
+    // Reset all mocks
+    jest.clearAllMocks();
     
     // Setup billing routes
     billingRoutes(fastify);
@@ -50,18 +65,11 @@ describe('Billing Routes', () => {
         trialEndsAt: new Date('2023-12-31')
       });
 
-      // Mock feature gating stats (need to mock the service)
-      const mockFeatureGating = {
-        getUsageStats: jest.fn().mockResolvedValue({
-          usage: { repositories: 5, activeRules: 10 },
-          limits: { repositories: 10, aiAnalysis: true }
-        })
-      };
-      
-      // Mock the service import
-      jest.doMock('../src/services/feature-gating', () => ({
-        featureGating: mockFeatureGating
-      }));
+      // Mock feature gating stats
+      mockFeatureGating.getUsageStats.mockResolvedValue({
+        usage: { repositories: 5, activeRules: 10 },
+        limits: { repositories: 10, aiAnalysis: true }
+      });
 
       const handler = fastify.get.mock.calls.find((call: any) => call[0] === '/org/:orgId')[1];
       await handler(request, reply);

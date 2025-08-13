@@ -9,17 +9,24 @@ datasource db {
 }
 
 model Organization {
-  id              String   @id @default(cuid())
-  githubId        String   @unique
-  login           String
-  name            String?
-  avatarUrl       String?
-  billingEmail    String?
-  plan            Plan     @default(FREE)
-  subscriptionId  String?
-  trialEndsAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  githubId             String   @unique
+  login                String
+  name                 String?
+  email                String?  // Add email field
+  avatarUrl            String?
+  billingEmail         String?
+  plan                 Plan     @default(FREE)
+  subscriptionId       String?
+  subscriptionStatus   String?  // active, canceled, trialing, etc.
+  stripeCustomerId     String?  // Stripe customer ID
+  stripeSubscriptionId String?  // Stripe subscription ID
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialEndsAt          DateTime?
+  metadata             Json?    // Additional flexible data
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   installations   Installation[]
   users           OrganizationUser[]
@@ -211,6 +218,92 @@ model WebhookEvent {
   processedAt DateTime?
 
   @@map("webhook_events")
+}
+
+model DemoRequest {
+  id           String   @id @default(cuid())
+  email        String
+  name         String
+  company      String
+  message      String?
+  repositories Int?
+  teamSize     Int?
+  status       String   @default("pending") // pending, contacted, demo_scheduled, converted, declined
+  requestedAt  DateTime @default(now())
+  contactedAt  DateTime?
+  notes        String?
+
+  @@map("demo_requests")
+}
+
+model SupportTicket {
+  id             String   @id
+  type           String   // bug, feature_request, question, billing, technical
+  priority       String   // low, medium, high, urgent
+  status         String   @default("open") // open, in_progress, waiting_for_customer, resolved, closed
+  subject        String
+  description    String
+  customerEmail  String
+  customerName   String?
+  organizationId String?
+  assignedTo     String?
+  tags           String[] @default([])
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  activities     TicketActivity[]
+
+  @@map("support_tickets")
+}
+
+model TicketActivity {
+  id          String   @id @default(cuid())
+  ticketId    String
+  type        String   // comment, status_change, assignment, auto_response
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_activities")
+}
+
+model FeatureRequest {
+  id             String   @id
+  title          String
+  description    String
+  customerEmail  String
+  organizationId String?
+  priority       String   @default("medium") // low, medium, high
+  status         String   @default("submitted") // submitted, under_review, planned, in_development, released, rejected
+  upvotes        Int      @default(1)
+  tags           String[] @default([])
+  businessImpact String?
+  useCase        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("feature_requests")
+}
+
+model SalesInquiry {
+  id           String   @id
+  name         String
+  email        String
+  company      String
+  message      String?
+  phone        String?
+  teamSize     Int?
+  currentTools String?
+  status       String   @default("new") // new, contacted, qualified, demo_scheduled, proposal_sent, closed_won, closed_lost
+  source       String   @default("website") // website, referral, event, cold_outreach
+  assignedTo   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("sales_inquiries")
 }
 
 enum Plan {
