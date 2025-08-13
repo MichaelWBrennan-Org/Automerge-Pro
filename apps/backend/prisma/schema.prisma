@@ -236,6 +236,76 @@ model DemoRequest {
   @@map("demo_requests")
 }
 
+model SupportTicket {
+  id             String   @id
+  type           String   // bug, feature_request, question, billing, technical
+  priority       String   // low, medium, high, urgent
+  status         String   @default("open") // open, in_progress, waiting_for_customer, resolved, closed
+  subject        String
+  description    String
+  customerEmail  String
+  customerName   String?
+  organizationId String?
+  assignedTo     String?
+  tags           String[] @default([])
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  activities     TicketActivity[]
+
+  @@map("support_tickets")
+}
+
+model TicketActivity {
+  id          String   @id @default(cuid())
+  ticketId    String
+  type        String   // comment, status_change, assignment, auto_response
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_activities")
+}
+
+model FeatureRequest {
+  id             String   @id
+  title          String
+  description    String
+  customerEmail  String
+  organizationId String?
+  priority       String   @default("medium") // low, medium, high
+  status         String   @default("submitted") // submitted, under_review, planned, in_development, released, rejected
+  upvotes        Int      @default(1)
+  tags           String[] @default([])
+  businessImpact String?
+  useCase        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("feature_requests")
+}
+
+model SalesInquiry {
+  id           String   @id
+  name         String
+  email        String
+  company      String
+  message      String?
+  phone        String?
+  teamSize     Int?
+  currentTools String?
+  status       String   @default("new") // new, contacted, qualified, demo_scheduled, proposal_sent, closed_won, closed_lost
+  source       String   @default("website") // website, referral, event, cold_outreach
+  assignedTo   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("sales_inquiries")
+}
+
 enum Plan {
   FREE
   TEAM
