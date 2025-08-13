@@ -1,0 +1,568 @@
+name: 'Enhanced CI/CD Pipeline with Canary Deployments'
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      deployment_type:
+        description: 'Deployment Type'
+        required: true
+        default: 'canary'
+        type: choice
+        options:
+          - canary
+          - blue-green
+          - rolling
+      environment:
+        description: 'Target Environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  NODE_VERSION: '18'
+  AWS_REGION: 'us-east-1'
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+jobs:
+  # Security and Quality Checks
+  security-scan:
+    name: 'Security & Quality Analysis'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Run Snyk Security Scan
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=package.json
+      
+      - name: Upload Snyk results to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        continue-on-error: true
+        with:
+          sarif_file: snyk.sarif
+      
+      - name: Run Dependabot Security Check
+        uses: dependabot/fetch-metadata@v1
+        continue-on-error: true
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+      
+      - name: OWASP ZAP Baseline Scan
+        if: github.event_name == 'push'
+        uses: zaproxy/action-baseline@v0.7.0
+        with:
+          target: 'https://automerge-pro-dev.herokuapp.com'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+
+  # Comprehensive Testing
+  test:
+    name: 'Comprehensive Testing'
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    strategy:
+      matrix:
+        node-version: [18, 20]
+        test-type: [unit, integration, e2e]
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: automerge_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Setup Test Environment
+        run: |
+          cp .env.example .env.test
+          npm run db:migrate
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/automerge_test
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Run Unit Tests
+        if: matrix.test-type == 'unit'
+        run: npm run test:unit -- --coverage --reporter=json --outputFile=coverage/unit-coverage.json
+        env:
+          NODE_ENV: test
+      
+      - name: Run Integration Tests
+        if: matrix.test-type == 'integration'
+        run: npm run test:integration -- --coverage --reporter=json --outputFile=coverage/integration-coverage.json
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/automerge_test
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Run E2E Tests
+        if: matrix.test-type == 'e2e'
+        run: |
+          npm run build
+          npm run start:test &
+          sleep 10
+          npm run test:e2e
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/automerge_test
+          REDIS_URL: redis://localhost:6379
+      
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: coverage/coverage-final.json
+          flags: ${{ matrix.test-type }}
+          name: Node-${{ matrix.node-version }}-${{ matrix.test-type }}
+      
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-results-${{ matrix.node-version }}-${{ matrix.test-type }}
+          path: |
+            coverage/
+            test-results/
+            logs/
+
+  # Build and Package
+  build:
+    name: 'Build and Package'
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Build Application
+        run: npm run build
+        env:
+          NODE_ENV: production
+      
+      - name: Package Lambda Functions
+        run: |
+          mkdir -p dist/lambda
+          cd dist/lambda
+          cp ../../lambda.js .
+          cp ../../package.json .
+          cp ../../package-lock.json .
+          npm ci --only=production
+          zip -r ../../lambda.zip .
+          cd ../..
+          
+          # Package other Lambda functions
+          zip -r validate-license.zip src/lambda/validate-license.js node_modules/
+          zip -r analytics-processor.zip src/lambda/analytics-processor.js node_modules/
+          zip -r anomaly-detector.zip src/lambda/anomaly-detector.js node_modules/
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            *.zip
+            package.json
+            template.yaml
+            infrastructure/
+          retention-days: 30
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and Push Docker Image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ github.sha }}
+
+  # Infrastructure Validation
+  infrastructure-validate:
+    name: 'Validate Infrastructure'
+    runs-on: ubuntu-latest
+    needs: build
+    
+    strategy:
+      matrix:
+        iac-tool: [terraform, sam]
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Setup Terraform
+        if: matrix.iac-tool == 'terraform'
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ~1.5
+      
+      - name: Setup AWS SAM
+        if: matrix.iac-tool == 'sam'
+        uses: aws-actions/setup-sam@v2
+      
+      - name: Validate Terraform
+        if: matrix.iac-tool == 'terraform'
+        run: |
+          cd infrastructure/terraform
+          terraform init -backend=false
+          terraform validate
+          terraform plan -out=tfplan
+        env:
+          TF_VAR_github_app_id: ${{ secrets.GITHUB_APP_ID }}
+          TF_VAR_github_private_key: ${{ secrets.GITHUB_PRIVATE_KEY }}
+          TF_VAR_github_webhook_secret: ${{ secrets.GITHUB_WEBHOOK_SECRET }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+      
+      - name: Validate SAM Template
+        if: matrix.iac-tool == 'sam'
+        run: |
+          sam validate --template template.yaml
+          sam build --template template.yaml
+
+  # Deployment Strategies
+  deploy-dev:
+    name: 'Deploy to Development'
+    runs-on: ubuntu-latest
+    needs: [build, infrastructure-validate]
+    if: github.ref == 'refs/heads/develop'
+    environment: 
+      name: dev
+      url: https://automerge-pro-dev.herokuapp.com
+    
+    steps:
+      - name: Deploy to Dev Environment
+        uses: ./.github/actions/deploy
+        with:
+          environment: dev
+          strategy: rolling
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-staging-canary:
+    name: 'Canary Deployment to Staging'
+    runs-on: ubuntu-latest
+    needs: [build, infrastructure-validate]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment: 
+      name: staging
+      url: https://automerge-pro-staging.herokuapp.com
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_STAGING }}
+          role-session-name: GitHubActions-Staging-Deploy
+      
+      - name: Deploy Canary (10% traffic)
+        run: |
+          aws lambda update-alias \
+            --function-name automerge-pro-staging-main-api \
+            --name live \
+            --function-version ${{ github.sha }} \
+            --routing-config AdditionalVersionWeights="{\"${{ github.sha }}\":0.1}"
+      
+      - name: Run Health Checks
+        run: |
+          sleep 30
+          ./scripts/health-check.sh staging
+          ./scripts/smoke-tests.sh staging
+      
+      - name: Monitor Canary Metrics
+        run: |
+          ./scripts/monitor-canary.sh staging 300  # Monitor for 5 minutes
+      
+      - name: Promote Canary or Rollback
+        run: |
+          if ./scripts/canary-metrics-check.sh staging; then
+            echo "Canary metrics look good, promoting to 100%"
+            aws lambda update-alias \
+              --function-name automerge-pro-staging-main-api \
+              --name live \
+              --function-version ${{ github.sha }}
+          else
+            echo "Canary metrics indicate issues, rolling back"
+            aws lambda update-alias \
+              --function-name automerge-pro-staging-main-api \
+              --name live \
+              --function-version $PREVIOUS_VERSION
+            exit 1
+          fi
+
+  deploy-prod-blue-green:
+    name: 'Blue-Green Deployment to Production'
+    runs-on: ubuntu-latest
+    needs: deploy-staging-canary
+    if: github.ref == 'refs/heads/main' && github.event.inputs.environment == 'prod'
+    environment: 
+      name: production
+      url: https://api.automerge-pro.com
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+          role-session-name: GitHubActions-Prod-Deploy
+      
+      - name: Deploy Green Environment
+        run: |
+          # Deploy to green environment (inactive)
+          aws lambda update-function-code \
+            --function-name automerge-pro-prod-main-api-green \
+            --zip-file fileb://lambda.zip
+          
+          # Update environment variables
+          aws lambda update-function-configuration \
+            --function-name automerge-pro-prod-main-api-green \
+            --environment Variables="{NODE_ENV=production,VERSION=${{ github.sha }}}"
+      
+      - name: Run Comprehensive Health Checks
+        run: |
+          ./scripts/health-check.sh prod-green
+          ./scripts/integration-tests.sh prod-green
+          ./scripts/performance-tests.sh prod-green
+      
+      - name: Switch Traffic to Green
+        run: |
+          # Update API Gateway to point to green environment
+          aws apigateway update-stage \
+            --rest-api-id ${{ secrets.API_GATEWAY_ID_PROD }} \
+            --stage-name prod \
+            --patch-ops op=replace,path=/variables/lambdaAlias,value=green
+      
+      - name: Monitor Production Metrics
+        run: |
+          ./scripts/monitor-production.sh 600  # Monitor for 10 minutes
+      
+      - name: Cleanup Old Blue Environment
+        if: success()
+        run: |
+          # Keep blue environment for quick rollback capability
+          echo "Blue environment retained for rollback capability"
+          
+          # Update blue to be the old version for rollback
+          aws lambda update-alias \
+            --function-name automerge-pro-prod-main-api \
+            --name blue \
+            --function-version $PREVIOUS_VERSION
+
+  # Post-Deployment Actions
+  post-deploy:
+    name: 'Post-Deployment Actions'
+    runs-on: ubuntu-latest
+    needs: [deploy-dev, deploy-staging-canary, deploy-prod-blue-green]
+    if: always() && (needs.deploy-dev.result == 'success' || needs.deploy-staging-canary.result == 'success' || needs.deploy-prod-blue-green.result == 'success')
+    
+    steps:
+      - name: Update Deployment Status
+        run: |
+          curl -X POST "${{ env.SLACK_WEBHOOK }}" \
+            -H 'Content-type: application/json' \
+            --data '{
+              "text": "🚀 AutoMerge Pro Deployment Complete",
+              "attachments": [{
+                "color": "good",
+                "fields": [{
+                  "title": "Environment",
+                  "value": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'staging' || 'dev') }}",
+                  "short": true
+                }, {
+                  "title": "Version",
+                  "value": "${{ github.sha }}",
+                  "short": true
+                }, {
+                  "title": "Deployment Type",
+                  "value": "${{ github.event.inputs.deployment_type || 'canary' }}",
+                  "short": true
+                }]
+              }]
+            }'
+      
+      - name: Update GitHub Deployment Status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: context.payload.deployment?.id,
+              state: 'success',
+              environment_url: '${{ github.event.inputs.environment == 'prod' && 'https://api.automerge-pro.com' || 'https://automerge-pro-staging.herokuapp.com' }}',
+              description: 'Deployment completed successfully'
+            });
+      
+      - name: Trigger Marketing Automation
+        run: |
+          curl -X POST "${{ secrets.WEBHOOK_URL_MARKETING }}" \
+            -H 'Content-type: application/json' \
+            --data '{
+              "event": "deployment_success",
+              "environment": "${{ github.event.inputs.environment || 'staging' }}",
+              "version": "${{ github.sha }}",
+              "timestamp": "${{ github.event.head_commit.timestamp }}"
+            }'
+
+  # Rollback Strategy
+  rollback:
+    name: 'Emergency Rollback'
+    runs-on: ubuntu-latest
+    if: failure() && (github.ref == 'refs/heads/main')
+    environment: production
+    
+    steps:
+      - name: Rollback Production
+        run: |
+          # Switch back to blue environment
+          aws apigateway update-stage \
+            --rest-api-id ${{ secrets.API_GATEWAY_ID_PROD }} \
+            --stage-name prod \
+            --patch-ops op=replace,path=/variables/lambdaAlias,value=blue
+      
+      - name: Notify Rollback
+        run: |
+          curl -X POST "${{ env.SLACK_WEBHOOK }}" \
+            -H 'Content-type: application/json' \
+            --data '{
+              "text": "🚨 AutoMerge Pro Emergency Rollback Initiated",
+              "attachments": [{
+                "color": "danger",
+                "fields": [{
+                  "title": "Reason",
+                  "value": "Deployment failure detected",
+                  "short": false
+                }, {
+                  "title": "Action Required",
+                  "value": "Please investigate and resolve issues before next deployment",
+                  "short": false
+                }]
+              }]
+            }'
