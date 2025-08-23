@@ -51,9 +51,9 @@ We reserve the right, at our sole discretion, to modify or replace these Terms a
 
 All payments are handled through the GitHub Marketplace. Please refer to the GitHub Marketplace Terms of Service for information on refunds. As a general policy, we do not offer refunds outside of what is provided by GitHub, but please contact us if you have any issues.
 
-## 12. Contact Us
+## 12. Contact Me
 
-If you have any questions about these Terms, please contact us:
+If you have any questions about these Terms, please contact me:
 
-- **Email:** support@automerge-pro.com
+- **Email:** michaelwilliambrennan@gmail.com
 - **GitHub Issues:** [Link to your GitHub Issues page]

@@ -475,6 +475,11 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - **Privacy Policy:** [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md)
 - **Terms of Service:** [docs/TERMS_OF_SERVICE.md](docs/TERMS_OF_SERVICE.md)
 
+## ⚖️ Legal
+
+- [Privacy Policy](docs/PRIVACY_POLICY.md)
+- [Terms of Service](docs/TERMS_OF_SERVICE.md)
+
 ## 🆘 Support
 
 - 📧 **Email**: support@automerge-pro.com
