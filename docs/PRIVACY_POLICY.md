@@ -65,7 +65,13 @@ We do not knowingly solicit information from or market to children under the age
 
 We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page.
 
-## 8. Contact Us
+## 8. Data Storage and Location
+
+Your information, including personal data, is stored on secure servers. Our servers are located in the United States. If you are accessing the App from outside the United States, please be aware that your information may be transferred to, stored, and processed in the United States.
+
+**(Note for developer: Please confirm the location of your servers and update this section accordingly.)**
+
+## 9. Contact Us
 
 If you have questions or comments about this Privacy Policy, please contact us at:
 

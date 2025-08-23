@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { deleteUser } from '../services/user';
 
 export async function authRoutes(fastify: FastifyInstance) {
   // GitHub OAuth callback
@@ -23,5 +24,24 @@ export async function authRoutes(fastify: FastifyInstance) {
   // Logout
   fastify.post('/logout', async (request: FastifyRequest, reply: FastifyReply) => {
     return reply.clearCookie('token').send({ status: 'logged out' });
+  });
+
+  // Delete current user
+  fastify.delete('/me', {
+    preHandler: [fastify.authenticate]
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = (request as any).user;
+
+    if (!user || !user.id) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
+    try {
+      await deleteUser(request.prisma, user.id);
+      return reply.clearCookie('token').send({ status: 'account deleted' });
+    } catch (error) {
+      request.log.error('Failed to delete account:', error);
+      return reply.status(500).send({ error: 'Failed to delete account' });
+    }
   });
 }

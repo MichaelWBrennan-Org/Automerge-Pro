@@ -47,9 +47,13 @@ These Terms shall be governed and construed in accordance with the laws of the j
 
 We reserve the right, at our sole discretion, to modify or replace these Terms at any time.
 
-## 11. Contact Us
+## 11. Refunds
 
-If you have any questions about these Terms, please contact us:
+All payments are handled through the GitHub Marketplace. Please refer to the GitHub Marketplace Terms of Service for information on refunds. As a general policy, we do not offer refunds outside of what is provided by GitHub, but please contact us if you have any issues.
 
-- **Email:** support@automerge-pro.com
+## 12. Contact Me
+
+If you have any questions about these Terms, please contact me:
+
+- **Email:** michaelwilliambrennan@gmail.com
 - **GitHub Issues:** [Link to your GitHub Issues page]
