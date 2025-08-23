@@ -405,6 +405,8 @@ Our AI analyzes multiple factors:
 - 🧩 **Complexity**: Code complexity, file changes, test coverage
 - 📋 **Quality**: Code style, documentation, best practices
 
+***Disclaimer:** AI-powered analysis provides suggestions and insights to aid in your review process. It is not a substitute for human oversight, and we recommend always reviewing the AI's conclusions before merging.*
+
 ## 📖 API Reference
 
 ### Webhook Events
@@ -467,9 +469,11 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 4. Push to the branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
-## 📄 License
+## ⚖️ Legal & Licensing
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **EULA / License:** This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **Privacy Policy:** [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md)
+- **Terms of Service:** [docs/TERMS_OF_SERVICE.md](docs/TERMS_OF_SERVICE.md)
 
 ## 🆘 Support
 
