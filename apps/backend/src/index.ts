@@ -26,6 +26,7 @@ import { AnalyticsWorker } from './services/analytics-worker';
 import { config } from './config';
 import { auditLogPlugin } from './plugins/audit-log';
 import { mergeRoutes } from './routes/merge';
+import { otelPlugin } from './plugins/otel';
 
 // Type augmentation for Fastify
 declare module 'fastify' {
@@ -137,6 +138,7 @@ async function buildApp() {
 
   // API routes
   await app.register(auditLogPlugin);
+  await app.register(otelPlugin);
   await app.register(authRoutes, { prefix: '/api/auth' });
   await app.register(mergeRoutes, { prefix: '/api' });
   await app.register(githubRoutes, { prefix: '/api/github' });

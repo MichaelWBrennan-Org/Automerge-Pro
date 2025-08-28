@@ -6,7 +6,7 @@ const execAsync = promisify(exec);
 
 export class VerificationService implements VerificationServiceInterface {
   async verify(_context: MergeContext, _decisions: MergeDecision[]): Promise<MergeVerification> {
-    // Minimal placeholder: in a real implementation, write files to a temp worktree, run build/tests.
+    // Minimal placeholder: In CI, this would write to a temp worktree, run build/tests, capture diagnostics.
     try {
       // no-op compile/test to keep tests green; hook into CI later
       return { compiled: true, testsPassed: true, warnings: [] };
