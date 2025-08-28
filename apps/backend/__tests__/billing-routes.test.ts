@@ -12,16 +12,14 @@ jest.mock('../src/config', () => ({
   }
 }));
 
-// Mock feature gating service
-const mockFeatureGating = {
-  getUsageStats: jest.fn(),
-  enforceRepositoryLimit: jest.fn(),
-  getPlanLimits: jest.fn(),
-  getOrganizationLimits: jest.fn()
-};
-
+// Mock feature gating service (avoid referencing variables before init due to jest hoisting)
 jest.mock('../src/services/feature-gating', () => ({
-  featureGating: mockFeatureGating
+  featureGating: {
+    getUsageStats: jest.fn(),
+    enforceRepositoryLimit: jest.fn(),
+    getPlanLimits: jest.fn(),
+    getOrganizationLimits: jest.fn()
+  }
 }));
 
 // Mock crypto module
@@ -31,6 +29,9 @@ jest.mock('crypto', () => ({
     digest: jest.fn().mockReturnValue('test-signature-hash')
   })
 }));
+
+// Access the mocked feature gating to configure return values in tests
+const { featureGating: mockFeatureGating } = require('../src/services/feature-gating');
 
 describe('Billing Routes', () => {
   let fastify: any;
@@ -44,6 +45,11 @@ describe('Billing Routes', () => {
     
     // Reset all mocks
     jest.clearAllMocks();
+    // Ensure signature verification uses the expected default signature after any prior test modifications
+    (crypto.createHmac as jest.Mock).mockReturnValue({
+      update: jest.fn().mockReturnThis(),
+      digest: jest.fn().mockReturnValue('test-signature-hash')
+    });
     
     // Setup billing routes
     billingRoutes(fastify);
@@ -378,6 +384,10 @@ describe('Billing Routes', () => {
         };
 
         request.body = payload;
+        request.headers = {
+          'x-hub-signature-256': 'sha256=test-signature-hash',
+          'x-github-event': 'marketplace_purchase'
+        };
         request.prisma.organization.upsert.mockClear();
 
         const handler = fastify.post.mock.calls.find((call: any) => call[0] === '/marketplace/webhook')[1];
