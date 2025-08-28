@@ -83,7 +83,7 @@ describe('ConfigurationService', () => {
       });
     });
 
-    it('should return default config when file not found', async () => {
+    it('should return zero-config safe defaults when file not found', async () => {
       mockOctokit.rest.repos.getContent.mockRejectedValue({
         status: 404,
         message: 'Not Found'
@@ -91,10 +91,12 @@ describe('ConfigurationService', () => {
 
       const config = await service.loadRepositoryConfig('test-org', 'test-repo');
 
-      expect(config).toEqual({
-        version: '1',
-        rules: []
-      });
+      expect(config.version).toBe('1');
+      expect(Array.isArray(config.rules)).toBe(true);
+      // Should include docs and dependabot zero-config rules
+      const names = config.rules.map(r => r.name);
+      expect(names.some(n => n.includes('documentation'))).toBe(true);
+      expect(names.some(n => n.toLowerCase().includes('dependabot'))).toBe(true);
     });
 
     it('should throw error for invalid file format', async () => {
