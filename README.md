@@ -61,7 +61,15 @@ Click the button above or visit our [GitHub Marketplace listing](https://github.
 
 ### 2. Setup and Configuration
 
-**Environment Variables:**
+**Zero-Config Defaults:**
+After installing the GitHub App, Automerge‑Pro works out of the box:
+- Documentation-only PRs are auto‑approved and auto‑merged.
+- Dependabot low‑risk updates are auto‑approved and auto‑merged.
+- All actions are silent; minimal status checks are posted as GitHub Check Runs.
+
+Optional advanced configuration is still available via `.automerge-pro.yml` or the dashboard.
+
+**Environment Variables (optional):**
 Copy `.env.example` to `.env` and configure:
 
 ```bash
@@ -72,6 +80,10 @@ Required environment variables:
 - `APP_ID` - Your GitHub App ID
 - `PRIVATE_KEY` - Your GitHub App private key  
 - `WEBHOOK_SECRET` - Your GitHub App webhook secret
+ - `AUTOMERGE_VERIFY` - Set to `true` to run real verification commands
+ - `OPA_URL` - OPA policy endpoint (optional)
+ - `OTEL_EXPORTER_OTLP_ENDPOINT` - OpenTelemetry OTLP endpoint (optional)
+ - `AST_MERGE_SERVICE_URL` - Optional external AST merge service for Python/Go/Java
 
 **Running the Simple Server:**
 ```bash

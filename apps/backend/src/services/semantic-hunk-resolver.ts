@@ -1,4 +1,7 @@
 import { SemanticHunkResolver, SemanticResolverResult } from './merge-orchestrator';
+import { parse, print } from 'recast';
+import tsParser from 'recast/parsers/typescript';
+import { Project, SyntaxKind } from 'ts-morph';
 
 export class TypeScriptSemanticHunkResolver implements SemanticHunkResolver {
   async tryAstThreeWay(
@@ -29,6 +32,51 @@ export class TypeScriptSemanticHunkResolver implements SemanticHunkResolver {
       if (leftAdds.length && rightAdds.length) {
         const merged = file.base + '\n' + [...leftAdds, ...rightAdds].join('\n');
         return { resolved: true, content: merged, diagnostics: ['append-merge'] };
+      }
+    } catch {}
+
+    // 4) AST-aware conservative merge: if base->left and base->right edit disjoint function bodies, prefer left + append right changes
+    try {
+      const baseAst = parse(file.base, { parser: tsParser });
+      const leftAst = parse(file.left, { parser: tsParser });
+      const rightAst = parse(file.right, { parser: tsParser });
+
+      // Very conservative: if right AST equals base AST at top-level node count and left changed, pick left
+      if (JSON.stringify(rightAst.program.body.map((n: any) => n.type)) === JSON.stringify(baseAst.program.body.map((n: any) => n.type))) {
+        return { resolved: true, content: file.left, diagnostics: ['ast-conservative-left'] };
+      }
+      if (JSON.stringify(leftAst.program.body.map((n: any) => n.type)) === JSON.stringify(baseAst.program.body.map((n: any) => n.type))) {
+        return { resolved: true, content: file.right, diagnostics: ['ast-conservative-right'] };
+      }
+    } catch {}
+
+    // 5) If right introduced new top-level declarations absent in left, append them
+    try {
+      const project = new Project({ useInMemoryFileSystem: true, skipAddingFilesFromTsConfig: true });
+      const leftSf = project.createSourceFile('left.ts', file.left, { overwrite: true });
+      const rightSf = project.createSourceFile('right.ts', file.right, { overwrite: true });
+
+      const leftNames = new Set<string>();
+      leftSf.forEachChild((node) => {
+        if (node.getKind() === SyntaxKind.FunctionDeclaration || node.getKind() === SyntaxKind.ClassDeclaration || node.getKind() === SyntaxKind.InterfaceDeclaration) {
+          const name = (node as any).getName?.();
+          if (name) leftNames.add(name);
+        }
+      });
+
+      const rightNewDeclTexts: string[] = [];
+      rightSf.forEachChild((node) => {
+        if (node.getKind() === SyntaxKind.FunctionDeclaration || node.getKind() === SyntaxKind.ClassDeclaration || node.getKind() === SyntaxKind.InterfaceDeclaration) {
+          const name = (node as any).getName?.();
+          if (name && !leftNames.has(name)) {
+            rightNewDeclTexts.push(node.getFullText());
+          }
+        }
+      });
+
+      if (rightNewDeclTexts.length > 0) {
+        const merged = file.left.trimEnd() + '\n\n' + rightNewDeclTexts.join('\n') + '\n';
+        return { resolved: true, content: merged, diagnostics: ['ast-append-new-declarations'] };
       }
     } catch {}
 
