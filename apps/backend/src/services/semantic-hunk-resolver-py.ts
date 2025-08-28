@@ -1,7 +1,12 @@
 import { SemanticHunkResolver, SemanticResolverResult } from './merge-orchestrator';
+import { AstMergeServiceClient } from './ast-merge-service';
 
 export class PythonSemanticHunkResolver implements SemanticHunkResolver {
+  private svc = new AstMergeServiceClient(process.env.AST_MERGE_SERVICE_URL);
   async tryAstThreeWay(file: { path: string; base: string; left: string; right: string }): Promise<SemanticResolverResult> {
+    // Try external AST merge service first
+    const svc = await this.svc.resolve({ ...file, language: 'py' });
+    if (svc.content) return { resolved: true, content: svc.content, diagnostics: svc.diagnostics || ['py-ast-service'] };
     // Trivial merges
     if (file.left === file.base && file.right !== file.base) return { resolved: true, content: file.right, diagnostics: ['py-right-wins'] };
     if (file.right === file.base && file.left !== file.base) return { resolved: true, content: file.left, diagnostics: ['py-left-wins'] };

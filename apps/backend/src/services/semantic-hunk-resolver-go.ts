@@ -1,7 +1,11 @@
 import { SemanticHunkResolver, SemanticResolverResult } from './merge-orchestrator';
+import { AstMergeServiceClient } from './ast-merge-service';
 
 export class GoSemanticHunkResolver implements SemanticHunkResolver {
+  private svc = new AstMergeServiceClient(process.env.AST_MERGE_SERVICE_URL);
   async tryAstThreeWay(file: { path: string; base: string; left: string; right: string }): Promise<SemanticResolverResult> {
+    const svc = await this.svc.resolve({ ...file, language: 'go' });
+    if (svc.content) return { resolved: true, content: svc.content, diagnostics: svc.diagnostics || ['go-ast-service'] };
     if (file.left === file.base && file.right !== file.base) return { resolved: true, content: file.right, diagnostics: ['go-right-wins'] };
     if (file.right === file.base && file.left !== file.base) return { resolved: true, content: file.left, diagnostics: ['go-left-wins'] };
     if (file.left === file.right) return { resolved: true, content: file.left, diagnostics: ['go-identical'] };

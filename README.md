@@ -83,6 +83,7 @@ Required environment variables:
  - `AUTOMERGE_VERIFY` - Set to `true` to run real verification commands
  - `OPA_URL` - OPA policy endpoint (optional)
  - `OTEL_EXPORTER_OTLP_ENDPOINT` - OpenTelemetry OTLP endpoint (optional)
+ - `AST_MERGE_SERVICE_URL` - Optional external AST merge service for Python/Go/Java
 
 **Running the Simple Server:**
 ```bash
