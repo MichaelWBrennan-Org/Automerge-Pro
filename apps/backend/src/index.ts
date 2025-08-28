@@ -24,6 +24,8 @@ import { ReportingService } from './services/reporting';
 import { NotificationService } from './services/notification';
 import { AnalyticsWorker } from './services/analytics-worker';
 import { config } from './config';
+import { auditLogPlugin } from './plugins/audit-log';
+import { mergeRoutes } from './routes/merge';
 
 // Type augmentation for Fastify
 declare module 'fastify' {
@@ -134,7 +136,9 @@ async function buildApp() {
   });
 
   // API routes
+  await app.register(auditLogPlugin);
   await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(mergeRoutes, { prefix: '/api' });
   await app.register(githubRoutes, { prefix: '/api/github' });
   await app.register(rulesRoutes, { prefix: '/api/rules' });
   await app.register(webhookRoutes, { prefix: '/api/webhooks' });

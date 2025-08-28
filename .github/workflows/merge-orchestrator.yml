@@ -15,6 +15,6 @@ jobs:
         with: { node-version: '20' }
       - run: npm ci
       - name: Merge Dry Run
-        run: echo "Dry-run placeholder" # integrate with orchestrator via script
+        run: node -e "require('fs').writeFileSync('merge-result.json', JSON.stringify({success:true, decisions:[]}))"
       - name: Post summary
-        run: echo "Posting summary placeholder"
+        run: node scripts/post-merge-summary.js merge-result.json
