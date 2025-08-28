@@ -69,8 +69,53 @@ export class ConfigurationService {
       }
     } catch (error: any) {
       if (error.status === 404) {
-        // No config file found, return defaults
-        return AutomergeConfigSchema.parse({});
+        // No config file found, return safe zero-config defaults
+        const defaults = {
+          version: '1',
+          rules: [
+            {
+              name: 'Zero-config: documentation-only',
+              description: 'Auto-approve and auto-merge documentation-only changes',
+              enabled: true,
+              conditions: {
+                filePatterns: ['**/*.md', 'docs/**', '**/README*'],
+                maxRiskScore: 0.2,
+                minApprovals: 0
+              },
+              actions: {
+                autoApprove: true,
+                autoMerge: true,
+                notify: false,
+                mergeMethod: 'squash',
+                deleteBranch: true
+              }
+            },
+            {
+              name: 'Zero-config: dependabot safe updates',
+              description: 'Auto-approve dependabot with low risk',
+              enabled: true,
+              conditions: {
+                authorPatterns: ['dependabot[bot]'],
+                maxRiskScore: 0.3
+              },
+              actions: {
+                autoApprove: true,
+                autoMerge: true,
+                notify: false,
+                mergeMethod: 'squash',
+                deleteBranch: true
+              }
+            }
+          ],
+          settings: {
+            aiAnalysis: true,
+            riskThreshold: 0.5,
+            autoDeleteBranches: true,
+            requireStatusChecks: true,
+            allowForceUpdates: false
+          }
+        };
+        return AutomergeConfigSchema.parse(defaults);
       }
       throw error;
     }
