@@ -257,6 +257,21 @@ model SupportTicket {
   @@map("support_tickets")
 }
 
+model AuditEvent {
+  id        String   @id @default(cuid())
+  orgId     String
+  repo      String
+  prNumber  Int
+  actor     String
+  eventType String
+  payload   Json
+  createdAt DateTime @default(now())
+  prevHash  String?
+  hash      String
+
+  @@index([orgId, repo, prNumber])
+}
+
 model TicketActivity {
   id          String   @id @default(cuid())
   ticketId    String

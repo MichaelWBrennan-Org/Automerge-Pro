@@ -23,6 +23,17 @@
     "test": {
       "outputs": ["coverage/**"]
     },
+    "merge": {
+      "cache": true,
+      "outputs": ["apps/backend/dist/**"],
+      "inputs": [
+        "apps/backend/src/services/merge-orchestrator.ts",
+        "apps/backend/src/services/llm-hunk-resolver.ts",
+        "apps/backend/src/services/semantic-hunk-resolver.ts",
+        "apps/backend/src/services/verification-service.ts",
+        "packages/shared/**"
+      ]
+    },
     "clean": {
       "cache": false
     }
