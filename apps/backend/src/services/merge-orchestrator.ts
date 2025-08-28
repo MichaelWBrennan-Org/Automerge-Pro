@@ -7,6 +7,7 @@ export interface MergeContext {
   rightSha: string;
   language: 'ts' | 'js' | 'py' | 'go' | 'java' | 'rb' | 'other';
   files: Array<{ path: string; base?: string; left?: string; right?: string }>;
+  verifyCommands?: string[];
 }
 
 export interface MergeDecision {

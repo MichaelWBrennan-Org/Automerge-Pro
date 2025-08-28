@@ -13,6 +13,7 @@ import { OpenAiLlmHunkResolver } from './llm-hunk-resolver';
 import { VerificationService } from './verification-service';
 import { PolicyEngine } from './policy-engine';
 import { eventBus } from './event-bus';
+import { CheckRunService } from './check-run';
 
 export interface QueueJob {
   pullRequestId: string;
@@ -96,6 +97,7 @@ export function setupQueues(redis: Redis) {
       }
 
       const octokit = await githubService.getInstallationClient(installationId);
+      const checkRun = new CheckRunService(octokit as any);
       
       switch (action) {
         case 'opened':
@@ -153,6 +155,7 @@ export function setupQueues(redis: Redis) {
       }
 
       const octokit = await githubService.getInstallationClient(installationId);
+      const checkRun = new CheckRunService(octokit as any);
       
       // Get PR diff and files
       const { data: prData } = await octokit.pulls.get({
