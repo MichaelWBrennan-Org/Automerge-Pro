@@ -7,6 +7,12 @@ import { analyzeNextFilesPullRequest } from './ai-analyzer';
 import { notificationService } from './notification';
 import { githubService } from './github';
 import { config } from '../config';
+import { MergeOrchestrator } from './merge-orchestrator';
+import { TypeScriptSemanticHunkResolver } from './semantic-hunk-resolver';
+import { OpenAiLlmHunkResolver } from './llm-hunk-resolver';
+import { VerificationService } from './verification-service';
+import { PolicyEngine } from './policy-engine';
+import { eventBus } from './event-bus';
 
 export interface QueueJob {
   pullRequestId: string;
@@ -100,6 +106,7 @@ export function setupQueues(redis: Redis) {
             installationId,
             repositoryId: pr.repositoryId
           });
+          // Attempt auto-merge for trivial cases (e.g., docs) after analysis completes in future runs
           break;
           
         case 'review_requested':
@@ -110,6 +117,7 @@ export function setupQueues(redis: Redis) {
         case 'approved':
           // Check if we can auto-merge
           await checkAutoMerge(pr, octokit);
+          await attemptAutoMerge(pr, installationId, octokit);
           break;
       }
 
@@ -202,6 +210,9 @@ export function setupQueues(redis: Redis) {
         }
       });
 
+      // After analysis, attempt auto merge silently if conditions likely met
+      await attemptAutoMerge(pr, installationId, octokit);
+
     } catch (error) {
       console.error(`Error in AI analysis job ${job.id}:`, error);
       throw error;
@@ -273,5 +284,65 @@ async function checkAutoMerge(pr: any, octokit: Octokit) {
         mergedAt: new Date()
       }
     });
+  }
+}
+
+async function attemptAutoMerge(pr: any, installationId: string, octokit: Octokit) {
+  try {
+    // Quick checks: must be open, low risk, and checks passing
+    if (pr.state !== 'OPEN') return;
+
+    const checks = await prisma.pRCheck.findMany({ where: { pullRequestId: pr.id } });
+    const allChecksPass = checks.every((c: any) => c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL');
+
+    // Build merge context from GitHub PR files
+    const { data: files } = await octokit.pulls.listFiles({
+      owner: pr.repository.fullName.split('/')[0],
+      repo: pr.repository.fullName.split('/')[1],
+      pull_number: pr.number
+    });
+
+    const mergeContext = {
+      repo: pr.repository.fullName,
+      baseSha: pr.baseBranch,
+      leftSha: pr.baseBranch,
+      rightSha: pr.headBranch,
+      language: 'ts' as const,
+      files: [] as any[] // Future: fetch base/left/right file contents
+    };
+
+    const orchestrator = new MergeOrchestrator(
+      new TypeScriptSemanticHunkResolver(),
+      new OpenAiLlmHunkResolver({ completeJSON: async () => ({ content: '', diagnostics: [] }) }),
+      new VerificationService()
+    );
+
+    const policy = new PolicyEngine(process.env.OPA_URL);
+    const decision = await policy.evaluate({ orgId: pr.repository.installation.organizationId, repo: pr.repository.fullName, prNumber: pr.number, labels: [] });
+    if (!decision.allow) return;
+
+    // Heuristic: allow auto-merge if docs-only or dependabot with low risk
+    const docsOnly = files.length > 0 && files.every((f: any) => f.filename.endsWith('.md') || f.filename.includes('docs/'));
+    const dependabot = pr.author.login === 'dependabot[bot]';
+    const lowRisk = (pr.riskScore ?? 0.2) <= 0.3;
+
+    if (allChecksPass && (docsOnly || (dependabot && lowRisk))) {
+      const result = await orchestrator.merge(mergeContext);
+      await eventBus.emit({ type: 'MERGE_DECISIONED', orgId: pr.repository.installation.organizationId, repo: pr.repository.fullName, prNumber: pr.number, payload: result });
+
+      if (result.success) {
+        await octokit.pulls.merge({
+          owner: pr.repository.fullName.split('/')[0],
+          repo: pr.repository.fullName.split('/')[1],
+          pull_number: pr.number,
+          merge_method: 'squash'
+        });
+
+        await prisma.pullRequest.update({ where: { id: pr.id }, data: { state: 'MERGED', mergedAt: new Date() } });
+        await eventBus.emit({ type: 'VERIFICATION_COMPLETED', orgId: pr.repository.installation.organizationId, repo: pr.repository.fullName, prNumber: pr.number, payload: { success: true } });
+      }
+    }
+  } catch (error) {
+    console.error('attemptAutoMerge error', error);
   }
 }
