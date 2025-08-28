@@ -17,6 +17,7 @@ import { VerificationService } from './verification-service';
 import { PolicyEngine } from './policy-engine';
 import { eventBus } from './event-bus';
 import { CheckRunService } from './check-run';
+import { buildMergeContext } from './diff-context';
 
 export interface QueueJob {
   pullRequestId: string;
@@ -312,15 +313,19 @@ async function attemptAutoMerge(pr: any, installationId: string, octokit: Octoki
       repo: pr.repository.fullName.split('/')[1],
       pull_number: pr.number
     });
-
-    const mergeContext = {
-      repo: pr.repository.fullName,
-      baseSha: pr.baseBranch,
-      leftSha: pr.baseBranch,
-      rightSha: pr.headBranch,
-      language: 'ts' as const,
-      files: [] as any[] // Future: fetch base/left/right file contents
-    };
+    const { data: prData } = await octokit.pulls.get({
+      owner: pr.repository.fullName.split('/')[0],
+      repo: pr.repository.fullName.split('/')[1],
+      pull_number: pr.number
+    });
+    const mergeContext = await buildMergeContext(
+      octokit as any,
+      pr.repository.fullName,
+      prData.base.sha,
+      prData.head.sha,
+      files as any
+    );
+    mergeContext.verifyCommands = process.env.AUTOMERGE_VERIFY === 'true' ? ['npm ci --ignore-scripts', 'npm test --silent'] : undefined;
 
     const orchestrator = new MergeOrchestrator(
       new TypeScriptSemanticHunkResolver(),
@@ -352,8 +357,11 @@ async function attemptAutoMerge(pr: any, installationId: string, octokit: Octoki
         await prisma.pullRequest.update({ where: { id: pr.id }, data: { state: 'MERGED', mergedAt: new Date() } });
         await eventBus.emit({ type: 'VERIFICATION_COMPLETED', orgId: pr.repository.installation.organizationId, repo: pr.repository.fullName, prNumber: pr.number, payload: { success: true } });
       }
+      return { merged: result.success, summary: result.success ? 'Auto-merged after successful verification' : 'Verification did not pass' };
     }
+    return { merged: false, summary: 'Conditions not met for auto-merge' };
   } catch (error) {
     console.error('attemptAutoMerge error', error);
+    return { merged: false, summary: 'Auto-merge attempt failed' };
   }
 }
