@@ -9,6 +9,9 @@ import { githubService } from './github';
 import { config } from '../config';
 import { MergeOrchestrator } from './merge-orchestrator';
 import { TypeScriptSemanticHunkResolver } from './semantic-hunk-resolver';
+import { PythonSemanticHunkResolver } from './semantic-hunk-resolver-py';
+import { GoSemanticHunkResolver } from './semantic-hunk-resolver-go';
+import { JavaSemanticHunkResolver } from './semantic-hunk-resolver-java';
 import { OpenAiLlmHunkResolver } from './llm-hunk-resolver';
 import { VerificationService } from './verification-service';
 import { PolicyEngine } from './policy-engine';
@@ -108,7 +111,7 @@ export function setupQueues(redis: Redis) {
             installationId,
             repositoryId: pr.repositoryId
           });
-          // Attempt auto-merge for trivial cases (e.g., docs) after analysis completes in future runs
+          // Auto-merge decision will occur post-analysis
           break;
           
         case 'review_requested':
@@ -163,6 +166,9 @@ export function setupQueues(redis: Redis) {
         repo: pr.repository.fullName.split('/')[1],
         pull_number: pr.number
       });
+      const headSha = prData.head.sha;
+      const checkRun = new CheckRunService(octokit as any);
+      await checkRun.createOrUpdate({ owner: pr.repository.fullName.split('/')[0], repo: pr.repository.fullName.split('/')[1], headSha, name: 'Automerge-Pro Orchestrator', status: 'in_progress', summary: 'Running AI analysis and merge dry-run' });
 
       const { data: files } = await octokit.pulls.listFiles({
         owner: pr.repository.fullName.split('/')[0],
@@ -214,7 +220,9 @@ export function setupQueues(redis: Redis) {
       });
 
       // After analysis, attempt auto merge silently if conditions likely met
-      await attemptAutoMerge(pr, installationId, octokit);
+      const attempt = await attemptAutoMerge(pr, installationId, octokit);
+      const conclusion = attempt?.merged ? 'success' : 'neutral';
+      await checkRun.createOrUpdate({ owner: pr.repository.fullName.split('/')[0], repo: pr.repository.fullName.split('/')[1], headSha, name: 'Automerge-Pro Orchestrator', status: 'completed', conclusion: conclusion as any, summary: attempt?.summary || 'Analysis complete' });
 
     } catch (error) {
       console.error(`Error in AI analysis job ${job.id}:`, error);

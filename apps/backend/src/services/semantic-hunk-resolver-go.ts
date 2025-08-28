@@ -1,0 +1,11 @@
+import { SemanticHunkResolver, SemanticResolverResult } from './merge-orchestrator';
+
+export class GoSemanticHunkResolver implements SemanticHunkResolver {
+  async tryAstThreeWay(file: { path: string; base: string; left: string; right: string }): Promise<SemanticResolverResult> {
+    if (file.left === file.base && file.right !== file.base) return { resolved: true, content: file.right, diagnostics: ['go-right-wins'] };
+    if (file.right === file.base && file.left !== file.base) return { resolved: true, content: file.left, diagnostics: ['go-left-wins'] };
+    if (file.left === file.right) return { resolved: true, content: file.left, diagnostics: ['go-identical'] };
+    return { resolved: false, content: file.left, diagnostics: ['go-unresolved'] };
+  }
+}
+
