@@ -19,6 +19,7 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@automerge-pro/shared": "*",
     "@bull-board/api": "^5.8.0",
     "@bull-board/fastify": "^5.8.0",
     "@fastify/cookie": "^9.1.0",
@@ -42,9 +43,10 @@
     "js-yaml": "^4.1.0",
     "nodemailer": "^6.9.7",
     "openai": "^4.12.4",
+    "recast": "^0.23.11",
     "stripe": "^18.4.0",
-    "zod": "^3.22.4",
-    "@automerge-pro/shared": "*"
+    "ts-morph": "^26.0.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.4",
