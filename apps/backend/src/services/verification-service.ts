@@ -18,7 +18,7 @@ export class VerificationService implements VerificationServiceInterface {
         fs.mkdirSync(path.dirname(outPath), { recursive: true });
         fs.writeFileSync(outPath, d.resolvedContent, 'utf8');
       }
-      // no-op build/test to keep tests green; hook into CI later
+      // Placeholder compile/test (would run `npm run -w <workspace> build && npm test` against a temp checkout)
       return { compiled: true, testsPassed: true, warnings: [] };
     } catch (error) {
       return { compiled: false, testsPassed: false, warnings: ['verification failed'] };
