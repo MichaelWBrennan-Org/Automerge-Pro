@@ -37,6 +37,8 @@ rules:
       autoMerge: false
       requireReviews: 1
       notify: true
+      # Optional: schedule merges triggered by this rule (cron or time window)
+      # schedule: "0 9 * * MON-FRI"
 
   - name: "Test-only changes"
     description: "Auto-approve test file changes"
@@ -106,3 +108,9 @@ settings:
   
   # Allow force updates to PRs after auto-approval
   allowForceUpdates: false
+
+  # Enable merge train/queue to serialize merges and avoid ping-pong failures
+  mergeTrain: true
+  maxConcurrentMerges: 1
+  # Optional default merge schedule for repos without rule-specific schedules
+  # defaultSchedule: "0 10 * * MON-FRI"

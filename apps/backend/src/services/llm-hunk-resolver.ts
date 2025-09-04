@@ -1,7 +1,8 @@
 import { LlmHunkResolver, MergeContext } from './merge-orchestrator';
+import { AiJsonClient } from './ai-json-client';
 
 export class OpenAiLlmHunkResolver implements LlmHunkResolver {
-  constructor(private readonly ai: { completeJSON: (prompt: string) => Promise<any> }) {}
+  constructor(private readonly ai: { completeJSON: (prompt: string) => Promise<{ content: string; diagnostics?: string[] }> } | AiJsonClient) {}
 
   async resolveConflict(
     file: { path: string; base: string; left: string; right: string },
@@ -21,7 +22,10 @@ export class OpenAiLlmHunkResolver implements LlmHunkResolver {
     ].join('\n\n');
 
     try {
-      const { content, diagnostics } = await this.ai.completeJSON(prompt);
+      const { content, diagnostics } = await (this.ai as any).completeJSON(prompt);
+      if (!content) {
+        return { content: file.left, diagnostics: ['llm-empty-content'] };
+      }
       return { content, diagnostics: diagnostics ?? [] };
     } catch (error) {
       return { content: file.left, diagnostics: ['LLM resolution failed'] };
