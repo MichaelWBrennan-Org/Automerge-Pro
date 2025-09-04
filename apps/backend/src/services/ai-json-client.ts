@@ -1,17 +1,6 @@
-import OpenAI from 'openai';
 import { config } from '../config';
 
 export class AiJsonClient {
-  private getOpenAI(): any {
-    const MaybeMocked = OpenAI as any;
-    if (MaybeMocked && MaybeMocked.mock && Array.isArray(MaybeMocked.mock.instances) && MaybeMocked.mock.instances.length > 0) {
-      return MaybeMocked.mock.instances[0];
-    }
-    if (!config.openai.apiKey) {
-      return null;
-    }
-    return new OpenAI({ apiKey: config.openai.apiKey });
-  }
 
   async completeJSON(prompt: string): Promise<{ content: string; diagnostics?: string[] }> {
     // Prefer Groq if configured (free tier) for cost efficiency
@@ -38,32 +27,37 @@ export class AiJsonClient {
         const parsed = JSON.parse(raw);
         return { content: parsed.content || '', diagnostics: Array.isArray(parsed.diagnostics) ? parsed.diagnostics : [] };
       } catch (e) {
-        // fall through to OpenAI
+        // fall through to next provider
       }
     }
 
-    const client = this.getOpenAI();
-    if (!client) {
-      return { content: '', diagnostics: ['llm-disabled'] };
+    // Hugging Face Inference API fallback (free tier with API key)
+    if (config.huggingface?.apiKey) {
+      try {
+        const completion = await fetch('https://api-inference.huggingface.co/models/' + encodeURIComponent(config.huggingface.model), {
+          method: 'POST',
+          headers: {
+            'authorization': `Bearer ${config.huggingface.apiKey}`,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            inputs: `You are a deterministic merge resolver. Return ONLY strict JSON with keys: content (string), diagnostics (array of strings).\n\n${prompt}`,
+            parameters: { max_new_tokens: 1024, temperature: 0 }
+          })
+        } as any);
+        const data: any = await completion.json();
+        const text: string = Array.isArray(data) ? (data[0]?.generated_text || '') : (data?.generated_text || data?.[0]?.generated_text || '');
+        const jsonStart = text.indexOf('{');
+        const jsonEnd = text.lastIndexOf('}');
+        const slice = jsonStart >= 0 && jsonEnd > jsonStart ? text.slice(jsonStart, jsonEnd + 1) : '{}';
+        const parsed = JSON.parse(slice);
+        return { content: parsed.content || '', diagnostics: Array.isArray(parsed.diagnostics) ? parsed.diagnostics : [] };
+      } catch (e) {
+        // ignore
+      }
     }
-    const response = await client.chat.completions.create({
-      model: config.openai.model,
-      messages: [
-        { role: 'system', content: 'Return ONLY valid JSON with keys: content (string), diagnostics (array of strings). Do not include markdown.' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0,
-      max_tokens: 2000,
-      response_format: { type: 'json_object' }
-    });
-    const raw = response.choices?.[0]?.message?.content || '{}';
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      parsed = { content: '', diagnostics: ['invalid-json'] };
-    }
-    return { content: parsed.content || '', diagnostics: Array.isArray(parsed.diagnostics) ? parsed.diagnostics : [] };
+
+    return { content: '', diagnostics: ['llm-disabled'] };
   }
 }
 

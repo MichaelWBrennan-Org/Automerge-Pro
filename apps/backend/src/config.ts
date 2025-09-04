@@ -30,6 +30,10 @@ const configSchema = z.object({
     apiKey: z.string().optional(),
     model: z.string().default('llama3-70b-8192')
   }).optional(),
+  huggingface: z.object({
+    apiKey: z.string().optional(),
+    model: z.string().default('mistralai/Mixtral-8x7B-Instruct-v0.1')
+  }).optional(),
   billing: z.object({
     stripeSecretKey: z.string(),
     stripeWebhookSecret: z.string(),
@@ -111,6 +115,10 @@ const rawConfig = {
   groq: {
     apiKey: process.env.GROQ_API_KEY,
     model: process.env.GROQ_MODEL || 'llama3-70b-8192'
+  },
+  huggingface: {
+    apiKey: process.env.HF_API_KEY,
+    model: process.env.HF_MODEL || 'mistralai/Mixtral-8x7B-Instruct-v0.1'
   },
   billing: {
     stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
