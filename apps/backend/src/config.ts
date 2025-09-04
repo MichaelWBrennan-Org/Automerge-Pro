@@ -26,6 +26,10 @@ const configSchema = z.object({
     apiKey: z.string(),
     model: z.string().default('gpt-4-1106-preview')
   }),
+  groq: z.object({
+    apiKey: z.string().optional(),
+    model: z.string().default('llama3-70b-8192')
+  }).optional(),
   billing: z.object({
     stripeSecretKey: z.string(),
     stripeWebhookSecret: z.string(),
@@ -103,6 +107,10 @@ const rawConfig = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
     model: process.env.OPENAI_MODEL || 'gpt-4-1106-preview'
+  },
+  groq: {
+    apiKey: process.env.GROQ_API_KEY,
+    model: process.env.GROQ_MODEL || 'llama3-70b-8192'
   },
   billing: {
     stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
