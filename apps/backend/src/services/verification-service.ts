@@ -19,13 +19,19 @@ export class VerificationService implements VerificationServiceInterface {
         fs.writeFileSync(outPath, d.resolvedContent, 'utf8');
       }
       if (process.env.AUTOMERGE_VERIFY === 'true' && context.verifyCommands && context.verifyCommands.length) {
-        try {
-          for (const cmd of context.verifyCommands) {
-            await execAsync(cmd, { cwd: tmp, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
+        const maxAttempts = Math.max(1, context.ciRetries ?? 1);
+        const timeoutMs = Math.max(30_000, (context.verifyTimeoutSeconds ?? 120) * 1000);
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            for (const cmd of context.verifyCommands) {
+              await execAsync(cmd, { cwd: tmp, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 });
+            }
+            return { compiled: true, testsPassed: true, warnings: attempt > 1 ? [`passed on retry ${attempt}`] : [] };
+          } catch (err: any) {
+            if (attempt === maxAttempts) {
+              return { compiled: false, testsPassed: false, warnings: ['verification failed: ' + (err?.message || 'unknown error')] };
+            }
           }
-          return { compiled: true, testsPassed: true, warnings: [] };
-        } catch (err) {
-          return { compiled: false, testsPassed: false, warnings: ['verification failed: ' + (err as any)?.message] };
         }
       }
       return { compiled: true, testsPassed: true, warnings: [] };

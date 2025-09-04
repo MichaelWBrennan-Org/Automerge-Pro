@@ -25,7 +25,9 @@ const AutomergeConfigSchema = z.object({
       requireReviews: z.number().min(0).optional(),
       notify: z.boolean().default(true),
       mergeMethod: z.enum(['merge', 'squash', 'rebase']).optional(),
-      deleteBranch: z.boolean().optional()
+      deleteBranch: z.boolean().optional(),
+      // Optional: schedule merges using cron or time windows (e.g., "0 9 * * MON-FRI" or "09:00-17:00 TZ=UTC")
+      schedule: z.string().optional()
     })
   })).default([]),
   notifications: z.object({
@@ -44,7 +46,11 @@ const AutomergeConfigSchema = z.object({
     riskThreshold: z.number().min(0).max(1).default(0.5),
     autoDeleteBranches: z.boolean().default(false),
     requireStatusChecks: z.boolean().default(true),
-    allowForceUpdates: z.boolean().default(false)
+    allowForceUpdates: z.boolean().default(false),
+    // Merge train/queue controls
+    mergeTrain: z.boolean().default(false),
+    maxConcurrentMerges: z.number().min(1).default(1),
+    defaultSchedule: z.string().optional()
   }).optional()
 });
 

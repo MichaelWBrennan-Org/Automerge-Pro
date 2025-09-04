@@ -1,5 +1,5 @@
 import { Queue, Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
+import Redis, { Redis as RedisType } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { Octokit } from '@octokit/rest';
 import OpenAI from 'openai';
@@ -8,16 +8,16 @@ import { notificationService } from './notification';
 import { githubService } from './github';
 import { config } from '../config';
 import { MergeOrchestrator } from './merge-orchestrator';
-import { TypeScriptSemanticHunkResolver } from './semantic-hunk-resolver';
-import { PythonSemanticHunkResolver } from './semantic-hunk-resolver-py';
-import { GoSemanticHunkResolver } from './semantic-hunk-resolver-go';
-import { JavaSemanticHunkResolver } from './semantic-hunk-resolver-java';
+import { MultiLanguageSemanticHunkResolver } from './multi-language-semantic-resolver';
 import { OpenAiLlmHunkResolver } from './llm-hunk-resolver';
 import { VerificationService } from './verification-service';
 import { PolicyEngine } from './policy-engine';
 import { eventBus } from './event-bus';
 import { CheckRunService } from './check-run';
 import { buildMergeContext } from './diff-context';
+import { AiJsonClient } from './ai-json-client';
+import { ConfigurationService } from './configuration';
+import { notificationService } from './notification';
 
 export interface QueueJob {
   pullRequestId: string;
@@ -30,7 +30,9 @@ export interface QueueJob {
 const prisma = new PrismaClient();
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
-export function setupQueues(redis: Redis) {
+const lockRedis = new Redis(config.redis.url);
+
+export function setupQueues(redis: RedisType) {
   // Queue for processing pull request events
   const prQueue = new Queue('pr-processing', {
     connection: redis,
@@ -102,7 +104,7 @@ export function setupQueues(redis: Redis) {
 
       const octokit = await githubService.getInstallationClient(installationId);
       const checkRun = new CheckRunService(octokit as any);
-      
+
       switch (action) {
         case 'opened':
         case 'synchronize':
@@ -123,6 +125,10 @@ export function setupQueues(redis: Redis) {
         case 'approved':
           // Check if we can auto-merge
           await checkAutoMerge(pr, octokit);
+          await attemptAutoMerge(pr, installationId, octokit);
+          break;
+
+        case 'attempt_merge':
           await attemptAutoMerge(pr, installationId, octokit);
           break;
       }
@@ -168,7 +174,6 @@ export function setupQueues(redis: Redis) {
         pull_number: pr.number
       });
       const headSha = prData.head.sha;
-      const checkRun = new CheckRunService(octokit as any);
       await checkRun.createOrUpdate({ owner: pr.repository.fullName.split('/')[0], repo: pr.repository.fullName.split('/')[1], headSha, name: 'Automerge-Pro Orchestrator', status: 'in_progress', summary: 'Running AI analysis and merge dry-run' });
 
       const { data: files } = await octokit.pulls.listFiles({
@@ -223,7 +228,9 @@ export function setupQueues(redis: Redis) {
       // After analysis, attempt auto merge silently if conditions likely met
       const attempt = await attemptAutoMerge(pr, installationId, octokit);
       const conclusion = attempt?.merged ? 'success' : 'neutral';
-      await checkRun.createOrUpdate({ owner: pr.repository.fullName.split('/')[0], repo: pr.repository.fullName.split('/')[1], headSha, name: 'Automerge-Pro Orchestrator', status: 'completed', conclusion: conclusion as any, summary: attempt?.summary || 'Analysis complete' });
+      const baseSummary = `Risk: ${pr.riskScore ?? 'n/a'}; Concerns: ${(analysis.concerns || []).length}`;
+      const summary = `${baseSummary}\n${attempt?.summary || 'Analysis complete'}`;
+      await checkRun.createOrUpdate({ owner: pr.repository.fullName.split('/')[0], repo: pr.repository.fullName.split('/')[1], headSha, name: 'Automerge-Pro Orchestrator', status: 'completed', conclusion: conclusion as any, summary });
 
     } catch (error) {
       console.error(`Error in AI analysis job ${job.id}:`, error);
@@ -326,10 +333,12 @@ async function attemptAutoMerge(pr: any, installationId: string, octokit: Octoki
       files as any
     );
     mergeContext.verifyCommands = process.env.AUTOMERGE_VERIFY === 'true' ? ['npm ci --ignore-scripts', 'npm test --silent'] : undefined;
+    mergeContext.ciRetries = 2;
+    mergeContext.verifyTimeoutSeconds = 180;
 
     const orchestrator = new MergeOrchestrator(
-      new TypeScriptSemanticHunkResolver(),
-      new OpenAiLlmHunkResolver({ completeJSON: async () => ({ content: '', diagnostics: [] }) }),
+      new MultiLanguageSemanticHunkResolver(),
+      new OpenAiLlmHunkResolver(new AiJsonClient()),
       new VerificationService()
     );
 

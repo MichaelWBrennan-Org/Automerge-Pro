@@ -8,6 +8,8 @@ export interface MergeContext {
   language: 'ts' | 'js' | 'py' | 'go' | 'java' | 'rb' | 'other';
   files: Array<{ path: string; base?: string; left?: string; right?: string }>;
   verifyCommands?: string[];
+  ciRetries?: number;
+  verifyTimeoutSeconds?: number;
 }
 
 export interface MergeDecision {
@@ -68,22 +70,22 @@ export class MergeOrchestrator {
       if (!file.left || !file.right || !file.base) continue;
 
       try {
-        if (context.language === 'ts' || context.language === 'js') {
-          const result = await this.semanticResolver.tryAstThreeWay(
-            { path: file.path, base: file.base, left: file.left, right: file.right },
-            undefined
-          );
-          if (result.resolved) {
-            decisions.push({
-              path: file.path,
-              resolvedContent: result.content,
-              strategy: 'ast',
-              diagnostics: result.diagnostics
-            });
-            continue;
-          }
+        // Always try semantic/AST-aware three-way first; resolver may no-op for unsupported languages
+        const result = await this.semanticResolver.tryAstThreeWay(
+          { path: file.path, base: file.base, left: file.left, right: file.right },
+          undefined
+        );
+        if (result.resolved) {
+          decisions.push({
+            path: file.path,
+            resolvedContent: result.content,
+            strategy: 'ast',
+            diagnostics: result.diagnostics
+          });
+          continue;
         }
 
+        // Fallback to LLM resolver
         const llm = await this.llmResolver.resolveConflict(
           { path: file.path, base: file.base, left: file.left, right: file.right },
           context
