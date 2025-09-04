@@ -8,7 +8,6 @@ import { githubService } from '../services/github';
 import { buildMergeContext } from '../services/diff-context';
 import { AiJsonClient } from '../services/ai-json-client';
 import { CheckRunService } from '../services/check-run';
-import { CheckRunService } from '../services/check-run-service';
 
 export async function mergeRoutes(fastify: FastifyInstance) {
   fastify.post('/merge/:owner/:repo/:pr/dry-run', async (

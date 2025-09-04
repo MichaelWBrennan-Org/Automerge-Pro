@@ -77,6 +77,28 @@ export function setupQueues(redis: RedisType) {
     }
   });
 
+  // Merge queue with priority/backoff
+  const mergeQueue = new Queue('merge-queue', {
+    connection: redis,
+    defaultJobOptions: {
+      removeOnComplete: 200,
+      removeOnFail: 100,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 3000 }
+    }
+  });
+
+  // Backport queue
+  const backportQueue = new Queue('backport-queue', {
+    connection: redis,
+    defaultJobOptions: {
+      removeOnComplete: 200,
+      removeOnFail: 50,
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 5000 }
+    }
+  });
+
   // Workers
   const prWorker = new Worker('pr-processing', async (job: Job<QueueJob>) => {
     const { pullRequestId, installationId, action, metadata } = job.data;
@@ -125,11 +147,11 @@ export function setupQueues(redis: RedisType) {
         case 'approved':
           // Check if we can auto-merge
           await checkAutoMerge(pr, octokit);
-          await attemptAutoMerge(pr, installationId, octokit);
+          await enqueueOrAttemptMerge(pr, installationId, octokit, mergeQueue);
           break;
 
         case 'attempt_merge':
-          await attemptAutoMerge(pr, installationId, octokit);
+          await enqueueOrAttemptMerge(pr, installationId, octokit, mergeQueue);
           break;
       }
 
@@ -225,8 +247,8 @@ export function setupQueues(redis: RedisType) {
         }
       });
 
-      // After analysis, attempt auto merge silently if conditions likely met
-      const attempt = await attemptAutoMerge(pr, installationId, octokit);
+      // After analysis, enqueue/attempt auto merge silently if conditions likely met
+      const attempt = await enqueueOrAttemptMerge(pr, installationId, octokit, mergeQueue, true);
       const conclusion = attempt?.merged ? 'success' : 'neutral';
       const baseSummary = `Risk: ${pr.riskScore ?? 'n/a'}; Concerns: ${(analysis.concerns || []).length}`;
       const summary = `${baseSummary}\n${attempt?.summary || 'Analysis complete'}`;
@@ -247,11 +269,60 @@ export function setupQueues(redis: RedisType) {
     }
   }, { connection: redis, concurrency: 10 });
 
+  // Merge queue worker: implements strict/lenient behavior by updating branch if needed
+  const mergeWorker = new Worker('merge-queue', async (job: Job<any>) => {
+    const { pullRequestId, installationId } = job.data;
+    const pr = await prisma.pullRequest.findUnique({
+      where: { id: pullRequestId },
+      include: { repository: true, author: true }
+    });
+    if (!pr) throw new Error(`Pull request ${pullRequestId} not found`);
+
+    const octokit = await githubService.getInstallationClient(installationId);
+    const [owner, repo] = pr.repository.fullName.split('/');
+    const configService = new ConfigurationService(octokit as any);
+    let repoConfig: any = {};
+    try { repoConfig = await configService.loadRepositoryConfig(owner, repo); } catch {}
+    const queueCfg = repoConfig?.settings?.mergeQueue || {};
+
+    if (queueCfg.mode === 'strict' || queueCfg.updateBranch === 'always') {
+      try { await (octokit.pulls as any).updateBranch({ owner, repo, pull_number: pr.number }); } catch {}
+    }
+
+    const attempt = await attemptAutoMerge(pr, installationId, octokit);
+    if (attempt?.merged) {
+      if (repoConfig?.backports?.to?.length) {
+        await backportQueue.add('create-backports', {
+          pullRequestId,
+          installationId,
+          branches: repoConfig.backports.to,
+          strategy: repoConfig.backports.strategy || 'cherry-pick'
+        });
+      }
+    } else {
+      throw new Error('Merge attempt did not succeed');
+    }
+  }, { connection: redis, concurrency: 1 });
+
+  // Backport worker: create a tracking issue (MVP)
+  const backportWorker = new Worker('backport-queue', async (job: Job<any>) => {
+    const { pullRequestId, installationId, branches, strategy } = job.data;
+    const pr = await prisma.pullRequest.findUnique({ where: { id: pullRequestId }, include: { repository: true } });
+    if (!pr) return;
+    const octokit = await githubService.getInstallationClient(installationId);
+    const [owner, repo] = pr.repository.fullName.split('/');
+    const title = `Backport: #${pr.number} to ${branches.join(', ')}`;
+    const body = `Automated backport requested for PR #${pr.number} using strategy ${strategy}.`;
+    try { await (octokit.issues as any).create({ owner, repo, title, body }); } catch {}
+  }, { connection: redis, concurrency: 2 });
+
   return {
     prQueue,
     aiQueue,
     notificationQueue,
-    workers: [prWorker, aiWorker, notificationWorker]
+    mergeQueue,
+    backportQueue,
+    workers: [prWorker, aiWorker, notificationWorker, mergeWorker, backportWorker]
   };
 }
 
@@ -373,4 +444,20 @@ async function attemptAutoMerge(pr: any, installationId: string, octokit: Octoki
     console.error('attemptAutoMerge error', error);
     return { merged: false, summary: 'Auto-merge attempt failed' };
   }
+}
+
+async function enqueueOrAttemptMerge(pr: any, installationId: string, octokit: Octokit, mergeQueue: Queue, silent = false) {
+  const [owner, repo] = pr.repository.fullName.split('/');
+  const configService = new ConfigurationService(octokit as any);
+  let repoConfig: any = {};
+  try { repoConfig = await configService.loadRepositoryConfig(owner, repo); } catch {}
+  const queueCfg = repoConfig?.settings?.mergeQueue;
+
+  if (queueCfg?.enabled) {
+    const priority = queueCfg.defaultPriority ?? 5;
+    await mergeQueue.add('enqueue-merge', { pullRequestId: pr.id, installationId }, { priority });
+    return { merged: false, summary: 'Enqueued in merge queue' };
+  }
+
+  return attemptAutoMerge(pr, installationId, octokit);
 }

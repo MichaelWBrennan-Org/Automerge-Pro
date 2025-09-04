@@ -26,10 +26,18 @@ const AutomergeConfigSchema = z.object({
       notify: z.boolean().default(true),
       mergeMethod: z.enum(['merge', 'squash', 'rebase']).optional(),
       deleteBranch: z.boolean().optional(),
+      // Optional: influence queue behavior when merge queue is enabled
+      priority: z.number().min(0).max(10).optional(),
+      rebaseBeforeMerge: z.boolean().optional(),
       // Optional: schedule merges using cron or time windows (e.g., "0 9 * * MON-FRI" or "09:00-17:00 TZ=UTC")
       schedule: z.string().optional()
     })
   })).default([]),
+  // Optional backport configuration (applies after merge)
+  backports: z.object({
+    to: z.array(z.string()),
+    strategy: z.enum(['cherry-pick', 'merge']).default('cherry-pick')
+  }).optional(),
   notifications: z.object({
     slack: z.object({
       webhookUrl: z.string().url(),
@@ -50,7 +58,16 @@ const AutomergeConfigSchema = z.object({
     // Merge train/queue controls
     mergeTrain: z.boolean().default(false),
     maxConcurrentMerges: z.number().min(1).default(1),
-    defaultSchedule: z.string().optional()
+    defaultSchedule: z.string().optional(),
+    // Centralized merge queue configuration
+    mergeQueue: z.object({
+      enabled: z.boolean().default(false),
+      mode: z.enum(['strict', 'lenient']).default('lenient'),
+      maxConcurrent: z.number().min(1).default(1),
+      updateBranch: z.enum(['always', 'as_needed', 'never']).default('as_needed'),
+      defaultPriority: z.number().min(0).max(10).default(5),
+      batchSize: z.number().min(1).max(20).optional()
+    }).optional()
   }).optional()
 });
 
@@ -118,7 +135,14 @@ export class ConfigurationService {
             riskThreshold: 0.5,
             autoDeleteBranches: true,
             requireStatusChecks: true,
-            allowForceUpdates: false
+            allowForceUpdates: false,
+            mergeQueue: {
+              enabled: false,
+              mode: 'lenient',
+              maxConcurrent: 1,
+              updateBranch: 'as_needed',
+              defaultPriority: 5
+            }
           }
         };
         return AutomergeConfigSchema.parse(defaults);
@@ -191,7 +215,8 @@ export class ConfigurationService {
             autoMerge: true,
             notify: false,
             mergeMethod: 'squash',
-            deleteBranch: true
+            deleteBranch: true,
+            priority: 7
           }
         },
         {
@@ -207,10 +232,16 @@ export class ConfigurationService {
             autoApprove: true,
             autoMerge: false,
             requireReviews: 1,
-            notify: true
+            notify: true,
+            priority: 5,
+            rebaseBeforeMerge: true
           }
         }
       ],
+      backports: {
+        to: ['release/*'],
+        strategy: 'cherry-pick'
+      },
       notifications: {
         slack: {
           webhookUrl: 'https://hooks.slack.com/your/webhook/url',
@@ -223,7 +254,14 @@ export class ConfigurationService {
         riskThreshold: 0.5,
         autoDeleteBranches: true,
         requireStatusChecks: true,
-        allowForceUpdates: false
+        allowForceUpdates: false,
+        mergeQueue: {
+          enabled: true,
+          mode: 'strict',
+          maxConcurrent: 1,
+          updateBranch: 'as_needed',
+          defaultPriority: 5
+        }
       }
     };
 
