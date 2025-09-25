@@ -1,10 +1,33 @@
+'use client'
+
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle, GitBranch, Zap, Shield, BarChart3, Users } from 'lucide-react'
+import { CheckCircle, GitBranch, Zap, Shield, BarChart3, Users, Github } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    // Check if user is authenticated
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.authenticated) {
+          setIsAuthenticated(true)
+          setUser(data.user)
+        }
+      })
+      .catch(console.error)
+  }, [])
+
+  const handleGitHubAuth = () => {
+    window.location.href = '/github/auth'
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Header */}
@@ -21,9 +44,21 @@ export default function Home() {
             <Link href="/docs" className="text-sm text-muted-foreground hover:text-primary">
               Docs
             </Link>
-            <Button asChild>
-              <Link href="/install">Add to GitHub</Link>
-            </Button>
+            {isAuthenticated ? (
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-muted-foreground">
+                  Welcome, {user?.login}
+                </span>
+                <Button asChild>
+                  <Link href="/dashboard">Dashboard</Link>
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleGitHubAuth} className="flex items-center space-x-2">
+                <Github className="h-4 w-4" />
+                <span>Connect GitHub</span>
+              </Button>
+            )}
           </div>
         </div>
       </header>
