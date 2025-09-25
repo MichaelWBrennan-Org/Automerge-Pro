@@ -1,9 +1,13 @@
 const express = require('express');
+const session = require('express-session');
 const { createNodeMiddleware, createProbot } = require('probot');
 const automergeLogic = require('./src/automerge');
 const billing = require('./src/billing');
 const config = require('./src/config');
+const { analyzeNextFilesPullRequest } = require('./apps/backend/src/services/ai-analyzer');
 const crypto = require('crypto');
+const { Octokit } = require('@octokit/rest');
+const { createAppAuth } = require('@octokit/auth-app');
 
 // DynamoDB client for license storage
 const DynamoDB = require('aws-sdk/clients/dynamodb');
@@ -33,6 +37,17 @@ try {
 // Add middleware for parsing JSON (important for Lambda)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Session middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'automerge-pro-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
 
 // CORS headers for API Gateway
 app.use((req, res, next) => {
@@ -69,13 +84,23 @@ if (probot) {
         if (evaluation.shouldMerge) {
           console.log(`Auto-merging PR #${pr.number} - ${evaluation.reason}`);
           
-          const success = await automergeLogic.performAutoMerge(pr, repository, octokit, evaluation.reason, evaluation.rule);
+          const success = await automergeLogic.performAutoMerge(pr, repository, octokit, evaluation.reason, evaluation.rule, evaluation);
           
           if (success) {
             console.log(`✅ Successfully auto-merged PR #${pr.number}`);
           }
         } else {
           console.log(`❌ PR #${pr.number} does not qualify for auto-merge: ${evaluation.reason}`);
+          
+          // Add a comment explaining why the PR wasn't merged
+          if (evaluation.reason !== 'evaluation-error') {
+            await octokit.rest.issues.createComment({
+              owner: repository.owner.login,
+              repo: repository.name,
+              issue_number: pr.number,
+              body: `❌ **AutoMerge Pro** - PR not eligible for auto-merge\n\n**Reason:** ${evaluation.reason}\n\nThis PR doesn't meet the criteria for automatic merging. Please review manually or adjust your AutoMerge Pro configuration.`
+            });
+          }
         }
       }
     } catch (error) {
@@ -281,6 +306,102 @@ app.post('/validate-license', async (req, res) => {
   }
 });
 
+// Rules management endpoints
+app.get('/api/rules/repository/:repoId', async (req, res) => {
+  try {
+    const { repoId } = req.params;
+    
+    // In a real implementation, this would fetch from database
+    // For now, return mock data
+    const mockRules = [
+      {
+        id: '1',
+        name: 'Auto-merge documentation',
+        description: 'Automatically merge changes to documentation files',
+        enabled: true,
+        conditions: {
+          filePatterns: ['*.md', 'docs/**'],
+          maxRiskScore: 0.2
+        },
+        actions: {
+          autoApprove: true,
+          autoMerge: true,
+          mergeMethod: 'squash'
+        }
+      },
+      {
+        id: '2',
+        name: 'Auto-merge dependabot',
+        description: 'Automatically merge dependabot PRs',
+        enabled: true,
+        conditions: {
+          authorPatterns: ['dependabot[bot]'],
+          maxRiskScore: 0.3
+        },
+        actions: {
+          autoApprove: true,
+          autoMerge: true,
+          mergeMethod: 'squash'
+        }
+      }
+    ];
+    
+    res.json(mockRules);
+  } catch (error) {
+    console.error('Error fetching rules:', error);
+    res.status(500).json({ error: 'Failed to fetch rules' });
+  }
+});
+
+app.post('/api/rules', async (req, res) => {
+  try {
+    const rule = req.body;
+    
+    // In a real implementation, this would save to database
+    const newRule = {
+      id: Date.now().toString(),
+      ...rule,
+      createdAt: new Date().toISOString()
+    };
+    
+    res.json(newRule);
+  } catch (error) {
+    console.error('Error creating rule:', error);
+    res.status(500).json({ error: 'Failed to create rule' });
+  }
+});
+
+app.put('/api/rules/:ruleId', async (req, res) => {
+  try {
+    const { ruleId } = req.params;
+    const updates = req.body;
+    
+    // In a real implementation, this would update in database
+    const updatedRule = {
+      id: ruleId,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    res.json(updatedRule);
+  } catch (error) {
+    console.error('Error updating rule:', error);
+    res.status(500).json({ error: 'Failed to update rule' });
+  }
+});
+
+app.delete('/api/rules/:ruleId', async (req, res) => {
+  try {
+    const { ruleId } = req.params;
+    
+    // In a real implementation, this would delete from database
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting rule:', error);
+    res.status(500).json({ error: 'Failed to delete rule' });
+  }
+});
+
 // Submit feedback endpoint
 app.post('/submit-feedback', async (req, res) => {
   try {
@@ -330,6 +451,176 @@ app.post('/submit-feedback', async (req, res) => {
       success: false,
       error: 'Failed to submit feedback'
     });
+  }
+});
+
+// GitHub OAuth routes
+app.get('/github/auth', (req, res) => {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const redirectUri = `${req.protocol}://${req.get('host')}/github/callback`;
+  const scope = 'repo,user:email';
+  const state = crypto.randomBytes(16).toString('hex');
+  
+  // Store state in session or database for validation
+  req.session = req.session || {};
+  req.session.oauthState = state;
+  
+  const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}`;
+  res.redirect(authUrl);
+});
+
+app.get('/github/callback', async (req, res) => {
+  const { code, state } = req.query;
+  
+  // Validate state parameter
+  if (!req.session || req.session.oauthState !== state) {
+    return res.status(400).json({ error: 'Invalid state parameter' });
+  }
+  
+  try {
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        code: code,
+      }),
+    });
+    
+    const tokenData = await tokenResponse.json();
+    
+    if (tokenData.error) {
+      throw new Error(tokenData.error_description || 'OAuth error');
+    }
+    
+    // Get user information
+    const octokit = new Octokit({ auth: tokenData.access_token });
+    const { data: user } = await octokit.rest.users.getAuthenticated();
+    
+    // Store user session
+    req.session.githubUser = {
+      id: user.id,
+      login: user.login,
+      name: user.name,
+      email: user.email,
+      avatar_url: user.avatar_url,
+      access_token: tokenData.access_token
+    };
+    
+    // Redirect to dashboard
+    res.redirect('/dashboard');
+    
+  } catch (error) {
+    console.error('GitHub OAuth error:', error);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+});
+
+// GitHub repositories endpoint
+app.get('/api/github/repositories', async (req, res) => {
+  try {
+    if (!req.session || !req.session.githubUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const octokit = new Octokit({ auth: req.session.githubUser.access_token });
+    const { data: repos } = await octokit.rest.repos.listForAuthenticatedUser({
+      type: 'all',
+      per_page: 100,
+      sort: 'updated'
+    });
+    
+    // Filter repositories where the app can be installed
+    const availableRepos = repos.filter(repo => 
+      repo.permissions && 
+      (repo.permissions.admin || repo.permissions.push)
+    );
+    
+    res.json(availableRepos.map(repo => ({
+      id: repo.id,
+      name: repo.name,
+      full_name: repo.full_name,
+      private: repo.private,
+      description: repo.description,
+      default_branch: repo.default_branch,
+      permissions: repo.permissions
+    })));
+    
+  } catch (error) {
+    console.error('Error fetching repositories:', error);
+    res.status(500).json({ error: 'Failed to fetch repositories' });
+  }
+});
+
+// Authentication status endpoint
+app.get('/api/auth/status', (req, res) => {
+  if (req.session && req.session.githubUser) {
+    res.json({
+      authenticated: true,
+      user: req.session.githubUser
+    });
+  } else {
+    res.json({
+      authenticated: false
+    });
+  }
+});
+
+// Logout endpoint
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Could not log out' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// GitHub app installation status
+app.get('/api/github/installation-status/:repoId', async (req, res) => {
+  try {
+    const { repoId } = req.params;
+    
+    if (!probot) {
+      return res.json({ installed: false, reason: 'App not configured' });
+    }
+    
+    // Check if app is installed on this repository
+    const octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: process.env.APP_ID,
+        privateKey: process.env.PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }
+    });
+    
+    // Get installations for this app
+    const { data: installations } = await octokit.rest.apps.listInstallations();
+    
+    for (const installation of installations) {
+      const { data: repos } = await octokit.rest.apps.listReposAccessibleToInstallation({
+        installation_id: installation.id
+      });
+      
+      if (repos.repositories.some(repo => repo.id === parseInt(repoId))) {
+        return res.json({ 
+          installed: true, 
+          installation_id: installation.id,
+          account: installation.account
+        });
+      }
+    }
+    
+    res.json({ installed: false, reason: 'App not installed on this repository' });
+    
+  } catch (error) {
+    console.error('Error checking installation status:', error);
+    res.status(500).json({ error: 'Failed to check installation status' });
   }
 });
 
